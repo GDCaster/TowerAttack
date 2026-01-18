@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Battle War: Node.js</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root { --bg: #0f0f0f; --ui: #1a1a1a; --gold: #FFD700; }
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+        body { background: var(--bg); color: white; font-family: 'Kanit', sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
+        .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 20; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
+        .active { display: flex !important; }
+        .btn { padding: 15px 35px; border-radius: 50px; border: none; font-weight: bold; cursor: pointer; margin: 10px; font-size: 1.1rem; }
+        .btn-gold { background: var(--gold); color: black; }
+        input, select { padding: 15px; border-radius: 12px; border: 1px solid #444; background: #333; color: white; text-align: center; font-size: 1.2rem; width: 80%; max-width: 300px; margin: 8px; }
+        #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 1; background: #050505; }
+        #world { position: absolute; width: 1600px; height: 900px; background: radial-gradient(circle at 50% 50%, #1a1a1a 0%, #000 80%); border: 5px solid #333; }
+        .base { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; text-align: center; font-size: 5rem; }
+        .hp-bar { width: 120px; height: 10px; background: #222; border: 1px solid #555; margin-top: 5px; position: relative; left: 50%; transform: translateX(-50%); }
+        .hp-fill { height: 100%; width: 100%; transition: width 0.2s; }
+        .unit { position: absolute; width: 28px; height: 28px; border-radius: 50%; transform: translate(-50%, -50%); z-index: 10; display: flex; justify-content: center; align-items: center; border: 2px solid white; transition: left 0.05s linear, top 0.05s linear; }
+        .dock { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 30; }
+        .card { width: 80px; height: 90px; background: #333; border-radius: 12px; border: 2px solid #555; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; }
+        .card.disabled { opacity: 0.4; pointer-events: none; }
+        .energy-box { position: absolute; bottom: 160px; left: 50%; transform: translateX(-50%); font-size: 2rem; color: var(--gold); z-index: 30; text-shadow: 0 0 10px black; }
+    </style>
+</head>
+<body>
+
+    <div id="menuScreen" class="screen active">
+        <h1 style="color:var(--gold); font-size:3rem;">BATTLE WAR</h1>
+        <p>Node.js Server Edition</p>
+        <input type="text" id="playerName" placeholder="ชื่อแม่ทัพ">
+        <select id="gameMode"><option value="1v1">1 vs 1</option><option value="bot">Play with Bot</option></select>
+        <button class="btn btn-gold" onclick="createRoom()">สร้างห้อง</button>
+        <div style="display:flex; gap:10px;">
+            <input type="text" id="roomCode" placeholder="รหัสห้อง">
+            <button class="btn btn-gold" onclick="joinRoom()">เข้าร่วม</button>
+        </div>
+    </div>
+
+    <div id="lobbyScreen" class="screen">
+        <h2 id="lobbyTitle">Room: ...</h2>
+        <div id="playerList" style="margin: 20px; font-size: 1.5rem;"></div>
+        <button id="readyBtn" class="btn btn-gold" onclick="toggleReady()">พร้อม</button>
+    </div>
+
+    <div id="gameScreen" class="screen" style="background:black;">
+        <div id="viewport">
+            <div id="world">
+                <div id="baseLeft" class="base" style="left: 100px;">🏰<div class="hp-bar"><div id="hpLeft" class="hp-fill" style="background:#ef4444;"></div></div></div>
+                <div id="baseRight" class="base" style="right: 100px;">🏰<div class="hp-bar"><div id="hpRight" class="hp-fill" style="background:#3b82f6;"></div></div></div>
+                <div id="unitsLayer"></div>
+            </div>
+        </div>
+        <div class="energy-box">⚡ <span id="energyVal">0</span></div>
+        <div class="dock">
+            <div class="card" onclick="reqSpawn('sword')">⚔️<br><small>20</small></div>
+            <div class="card" onclick="reqSpawn('bow')">🏹<br><small>40</small></div>
+            <div class="card" onclick="reqSpawn('tank')">🛡️<br><small>70</small></div>
+            <div class="card" onclick="reqSpawn('mage')">🔮<br><small>100</small></div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let mySide = null;
+        let roomId = null;
+        let camX = 0;
+
+        // --- LOBBY ---
+        function createRoom() {
+            const name = document.getElementById('playerName').value || 'Host';
+            const mode = document.getElementById('gameMode').value;
+            socket.emit('create_room', { name, mode });
+        }
+        function joinRoom() {
+            const name = document.getElementById('playerName').value || 'Guest';
+            const code = document.getElementById('roomCode').value.toUpperCase();
+            socket.emit('join_room', { roomId: code, name });
+        }
+        function toggleReady() { socket.emit('toggle_ready', roomId); }
+
+        socket.on('room_created', (data) => {
+            roomId = data.roomId;
+            mySide = 'left'; // Host is always left
+            enterLobby();
+        });
+
+        socket.on('update_lobby', (players) => {
+            roomId = roomId || (players.find(p=>p.id===socket.id) ? roomId : null); // Sync ID logic if needed
+            if(!roomId && players.length>0) roomId = players[0].roomId; // Simplify
+            
+            const me = players.find(p => p.id === socket.id);
+            if(me) mySide = me.side;
+
+            enterLobby();
+            document.getElementById('lobbyTitle').innerText = `Room: ${roomId}`;
+            document.getElementById('playerList').innerHTML = players.map(p => 
+                `<div style="color:${p.color}">${p.name} (${p.side}) - ${p.ready?'READY':'...'}</div>`
+            ).join('');
+            
+            document.getElementById('readyBtn').innerText = me && me.ready ? "ยกเลิก" : "พร้อม";
+        });
+
+        socket.on('start_game', () => {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('gameScreen').style.display = 'block';
+            // Setup Camera
+            const vp = document.getElementById('viewport');
+            camX = mySide === 'right' ? -(1600 - vp.clientWidth) : 0;
+            document.getElementById('world').style.transform = `translate(${camX}px, -${(900-vp.clientHeight)/2}px)`;
+        });
+
+        function enterLobby() {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('lobbyScreen').classList.add('active');
+        }
+
+        // --- GAMEPLAY ---
+        const SPECS = { sword: 20, bow: 40, tank: 70, mage: 100 };
+        let currentEnergy = 0;
+
+        function reqSpawn(type) {
+            if(currentEnergy >= SPECS[type]) {
+                socket.emit('spawn_request', { roomId, type });
+            }
+        }
+
+        socket.on('world_update', (data) => {
+            // Update Energy
+            currentEnergy = Math.floor(data.e[mySide]);
+            document.getElementById('energyVal').innerText = currentEnergy;
+            
+            // Update Cards
+            document.querySelectorAll('.card').forEach(c => {
+                const cost = parseInt(c.querySelector('small').innerText);
+                if(currentEnergy < cost) c.classList.add('disabled'); else c.classList.remove('disabled');
+            });
+
+            // Update Bases
+            document.getElementById('hpLeft').style.width = (data.b.left/10) + '%';
+            document.getElementById('hpRight').style.width = (data.b.right/10) + '%';
+
+            // Update Units
+            const layer = document.getElementById('unitsLayer');
+            const existIds = new Set();
+            
+            data.u.forEach(u => {
+                existIds.add(u.i);
+                let el = document.getElementById(u.i);
+                if(!el) {
+                    el = document.createElement('div');
+                    el.id = u.i;
+                    el.className = 'unit';
+                    el.innerText = u.t === 'sword' ? '⚔️' : (u.t === 'bow' ? '🏹' : (u.t === 'tank' ? '🛡️' : '🔮'));
+                    el.style.backgroundColor = u.c;
+                    layer.appendChild(el);
+                }
+                el.style.left = u.x + 'px';
+                el.style.top = u.y + 'px';
+                el.style.opacity = (u.h / 10) + 0.3; // Simple HP visual
+            });
+
+            // Remove dead units
+            Array.from(layer.children).forEach(child => {
+                if(!existIds.has(child.id)) child.remove();
+            });
+        });
+        
+        socket.on('game_over', (data) => {
+            alert(data.winner === mySide ? "VICTORY!" : "DEFEAT!");
+            location.reload();
+        });
+    </script>
+</body>
+</html>
