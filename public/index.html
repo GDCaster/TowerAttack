@@ -3,88 +3,135 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Battle War: Node.js</title>
+    <title>Battle War: Mobile</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
     <style>
-        /* CSS เดิมของคุณ 100% */
-        :root { --bg: #0f0f0f; --ui: #1a1a1a; --gold: #FFD700; }
+        /* --- CORE --- */
+        :root { --bg: #111; --gold: #FFD700; --red: #ff4757; --blue: #2ed573; }
         * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
         body { background: var(--bg); color: white; font-family: 'Kanit', sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
+        
+        /* --- ANIMATIONS --- */
+        @keyframes popIn { 0% { transform: translate(-50%,-50%) scale(0); } 80% { transform: translate(-50%,-50%) scale(1.2); } 100% { transform: translate(-50%,-50%) scale(1); } }
+        @keyframes floatUp { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-50px); opacity: 0; } }
+        @keyframes walkAnim { 0% { transform: translate(-50%,-50%) rotate(-5deg); } 50% { transform: translate(-50%,-50%) rotate(5deg); } 100% { transform: translate(-50%,-50%) rotate(-5deg); } }
+        @keyframes attackAnim { 0% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-50%) scale(1.3); } 100% { transform: translate(-50%,-50%) scale(1); } }
+
+        /* --- SCREENS --- */
         .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 20; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
         .active { display: flex !important; }
-        input, select { padding: 15px; border-radius: 12px; border: 1px solid #444; background: #333; color: white; text-align: center; font-size: 1.2rem; width: 80%; max-width: 300px; margin: 8px; }
-        .btn { padding: 15px 35px; border-radius: 50px; border: none; font-weight: bold; cursor: pointer; margin: 10px; font-size: 1.1rem; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        .btn:active { transform: scale(0.95); }
+        
+        /* --- UI ELEMENTS --- */
+        input, select { padding: 12px; border-radius: 10px; border: 1px solid #444; background: #222; color: white; font-size: 1.1rem; width: 80%; max-width: 300px; margin: 5px; text-align: center; }
+        .btn { padding: 12px 30px; border-radius: 50px; border: none; font-weight: bold; font-size: 1.1rem; margin: 10px; transition: 0.2s; box-shadow: 0 4px 0 rgba(0,0,0,0.5); cursor: pointer; }
+        .btn:active { transform: translateY(4px); box-shadow: none; }
         .btn-gold { background: var(--gold); color: black; }
-        .btn-gray { background: #444; color: #aaa; }
-        .color-row { display: flex; gap: 10px; margin-top: 10px; justify-content: center; }
-        .color-btn { width: 35px; height: 35px; border-radius: 50%; border: 3px solid #333; cursor: pointer; transition: 0.2s; }
-        .color-btn.selected { border-color: white; box-shadow: 0 0 10px white; }
-        .color-btn.taken { opacity: 0.2; cursor: not-allowed; border-color: #333; }
-        .lobby-box { width: 90%; max-width: 700px; background: var(--ui); padding: 30px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
-        .team-container { display: flex; gap: 10px; margin-top: 20px; min-height: 250px; }
-        .team-col { flex: 1; background: rgba(0,0,0,0.2); border: 2px dashed #333; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; align-items: center; }
-        .player-item { width: 100%; padding: 10px; background: #2a2a2a; margin-bottom: 5px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; border-left: 5px solid transparent; }
-        .ready-tag { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; background: #444; color: #888; }
-        .ready-tag.yes { background: #22c55e; color: white; }
-        #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 1; background: #050505; touch-action: none; cursor: grab; }
-        #viewport:active { cursor: grabbing; }
-        #world { position: absolute; top: 0; left: 0; width: 1600px; height: 900px; background: radial-gradient(circle at 50% 50%, #1a1a1a 0%, #000 80%); border: 5px solid #333; }
-        .base { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; text-align: center; }
-        .base-icon { font-size: 5rem; filter: drop-shadow(0 0 20px rgba(0,0,0,0.6)); transition: transform 0.1s; }
-        .hp-bar { width: 120px; height: 10px; background: #222; border: 1px solid #555; margin-top: 5px; border-radius: 4px; overflow: hidden; position: relative; left: 50%; transform: translateX(-50%); }
-        .hp-fill { height: 100%; width: 100%; transition: width 0.1s; }
-        .unit { position: absolute; width: 28px; height: 28px; border-radius: 50%; transform: translate(-50%, -50%); z-index: 10; display: flex; justify-content: center; align-items: center; font-size: 14px; box-shadow: 0 3px 5px rgba(0,0,0,0.5); transition: left 0.05s linear, top 0.05s linear; color: white; font-weight: bold; text-shadow: 0 0 2px black; border: 2px solid white; }
-        #hud { position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 30; }
-        .energy-box { position: absolute; bottom: 160px; left: 50%; transform: translateX(-50%); font-size: 1.8rem; font-weight: bold; color: var(--gold); background: rgba(0,0,0,0.8); padding: 5px 30px; border-radius: 50px; border: 2px solid var(--gold); box-shadow: 0 0 15px rgba(255, 215, 0, 0.3); }
-        .dock { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(20,20,20,0.9); padding: 10px 15px; border-radius: 25px; display: flex; gap: 10px; pointer-events: auto; backdrop-filter: blur(10px); border: 1px solid #444; width: 95%; max-width: 500px; justify-content: center; }
-        .card { flex: 1; height: 90px; background: #333; border-radius: 12px; border: 2px solid #555; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.1s; }
-        .card:active { transform: scale(0.9); }
-        .card.disabled { opacity: 0.4; filter: grayscale(1); pointer-events: none; }
-        .cost-badge { position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; background: var(--gold); color: black; border-radius: 50%; font-weight: bold; font-size: 0.8rem; display: flex; justify-content: center; align-items: center; border: 2px solid #222; }
-        #resultScreen { background: rgba(0,0,0,0.95); }
-        #winnerText { font-size: 4rem; margin-bottom: 20px; text-shadow: 0 0 30px rgba(255,215,0,0.5); text-align: center; }
+        .btn-gray { background: #444; color: #ccc; }
+
+        /* --- LOBBY --- */
+        .lobby-box { width: 95%; max-width: 600px; background: #1a1a1a; padding: 20px; border-radius: 20px; border: 1px solid #333; }
+        .team-container { display: flex; gap: 10px; margin-top: 15px; min-height: 200px; }
+        .team-col { flex: 1; background: rgba(0,0,0,0.3); border: 2px dashed #444; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+        .player-card { width: 100%; background: #333; padding: 10px; border-radius: 8px; margin-bottom: 5px; font-size: 0.9rem; display: flex; justify-content: space-between; border-left: 4px solid #fff; }
+        
+        /* --- GAME WORLD --- */
+        #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 1; background: #050505; }
+        #world { position: absolute; top: 0; left: 0; width: 1600px; height: 900px; background: radial-gradient(#1a1a1a 10%, #000 90%); border: 5px solid #333; }
+        
+        /* Bases */
+        .base { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; text-align: center; font-size: 4rem; filter: drop-shadow(0 0 15px rgba(0,0,0,0.5)); }
+        .hp-bar-con { width: 100px; height: 8px; background: #333; border: 1px solid #555; margin-top: 5px; border-radius: 4px; position: relative; left: 50%; transform: translateX(-50%); overflow: hidden; }
+        .hp-fill { height: 100%; width: 100%; transition: width 0.3s; }
+
+        /* Units */
+        .unit { 
+            position: absolute; width: 30px; height: 30px; border-radius: 50%; 
+            transform: translate(-50%, -50%); z-index: 10; 
+            display: flex; justify-content: center; align-items: center; 
+            font-size: 16px; border: 2px solid white;
+            transition: left 0.05s linear, top 0.05s linear; /* Smooth sync */
+            animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .unit.walk { animation: walkAnim 0.5s infinite linear; }
+        .unit.attack { animation: attackAnim 0.3s infinite; }
+
+        /* Effects */
+        .dmg-text {
+            position: absolute; color: #ff4757; font-weight: bold; font-size: 1.2rem;
+            text-shadow: 0 0 2px black; pointer-events: none; z-index: 20;
+            animation: floatUp 0.8s forwards;
+        }
+
+        /* --- HUD (Mobile Optimized) --- */
+        .hud-top { position: absolute; top: 10px; width: 100%; text-align: center; pointer-events: none; z-index: 30; }
+        .energy-badge { 
+            display: inline-block; background: rgba(0,0,0,0.8); border: 2px solid var(--gold); 
+            color: var(--gold); padding: 5px 20px; border-radius: 30px; font-size: 1.5rem; font-weight: bold; 
+        }
+        
+        .dock {
+            position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 8px; z-index: 30; width: 95%; max-width: 500px;
+            justify-content: center;
+        }
+        .card {
+            flex: 1; height: 80px; background: #222; border: 2px solid #444; border-radius: 12px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            position: relative; transition: 0.1s; cursor: pointer; user-select: none;
+        }
+        .card:active { transform: scale(0.95); border-color: var(--gold); }
+        .card.disabled { opacity: 0.5; filter: grayscale(1); pointer-events: none; }
+        .card-icon { font-size: 1.8rem; margin-bottom: -5px; }
+        .card-cost { font-size: 0.8rem; font-weight: bold; color: var(--gold); background: #000; padding: 2px 6px; border-radius: 10px; margin-top: 2px; }
+
+        /* Join Msg */
+        #msgBox { color: var(--red); margin-top: 10px; font-size: 0.9rem; min-height: 20px; }
     </style>
-    <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
+
     <div id="menuScreen" class="screen active">
-        <h1 style="color:var(--gold); font-size:3rem; margin-bottom:10px;">BATTLE WAR</h1>
-        <p style="color:#666; margin-bottom:30px;">Node.js Edition</p>
-        <input type="text" id="playerName" placeholder="ชื่อแม่ทัพ" maxlength="12">
+        <h1 style="color:var(--gold); font-size:3rem; text-shadow:0 0 10px rgba(255,215,0,0.3);">BATTLE WAR</h1>
+        <p style="color:#888; margin-bottom:20px;">Mobile & Animated Update</p>
+        
+        <input type="text" id="playerName" placeholder="ตั้งชื่อของคุณ">
         <select id="gameMode">
-            <option value="1v1">โหมด 1 vs 1</option>
-            <option value="bot">โหมด 1 vs Bot</option>
+            <option value="1v1">1 vs 1 (Online)</option>
+            <option value="bot">Play vs Bot</option>
         </select>
-        <div style="margin-top:20px; width:100%; text-align:center;">
-            <button class="btn btn-gold" onclick="createRoom()">เริ่มเกม / สร้างห้อง</button>
+        
+        <button class="btn btn-gold" style="width:80%; max-width:300px;" onclick="createRoom()">สร้างห้องใหม่</button>
+        
+        <div style="display:flex; gap:5px; width:80%; max-width:300px; margin-top:10px;">
+            <input type="text" id="roomCodeInput" placeholder="รหัสห้อง" style="margin:0; width:60%;">
+            <button class="btn btn-gray" style="margin:0; width:40%; padding:10px;" onclick="joinRoom()">เข้าร่วม</button>
         </div>
-        <div style="margin-top:30px; border-top:1px solid #333; padding-top:20px; display:flex; gap:10px; justify-content:center;">
-            <input type="text" id="roomCodeInput" placeholder="รหัสห้อง" style="width:140px;">
-            <button class="btn btn-gray" onclick="joinRoom()">เข้าร่วม</button>
-        </div>
+        <div id="msgBox"></div>
     </div>
 
     <div id="lobbyScreen" class="screen">
         <div class="lobby-box">
-            <h2 id="lobbyTitle">Room: ...</h2>
-            <div style="text-align:center; margin-top:15px; background:#222; padding:10px; border-radius:10px;">
-                <small style="color:#aaa;">เลือกสีประจำกองทัพ</small>
-                <div class="color-row" id="colorPicker"></div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h2 id="lobbyTitle" style="color:white;">Room: ...</h2>
+                <button class="btn btn-gray" style="padding:5px 15px; font-size:0.8rem;" onclick="location.reload()">ออก</button>
             </div>
+            
             <div class="team-container">
                 <div class="team-col">
-                    <h3 style="color:#ef4444">LEFT</h3>
-                    <button class="btn btn-gray" style="font-size:0.8rem; padding:8px 20px;" onclick="switchSide('left')">เข้าฝั่งนี้</button>
+                    <h3 style="color:#3b82f6">TEAM A</h3>
+                    <button class="btn btn-gray" style="font-size:0.7rem; padding:5px 10px;" onclick="switchSide('left')">อยู่ฝั่งนี้</button>
                     <div id="listLeft" style="width:100%; margin-top:10px;"></div>
                 </div>
+                
                 <div style="display:flex; flex-direction:column; justify-content:center; align-items:center;">
                     <h1 style="color:#555;">VS</h1>
-                    <button id="readyBtn" class="btn btn-gold" style="width:100%; font-size:1rem;" onclick="toggleReady()">พร้อม</button>
+                    <button id="readyBtn" class="btn btn-gold" onclick="toggleReady()">พร้อม</button>
                 </div>
+
                 <div class="team-col">
-                    <h3 style="color:#3b82f6">RIGHT</h3>
-                    <button class="btn btn-gray" style="font-size:0.8rem; padding:8px 20px;" onclick="switchSide('right')">เข้าฝั่งนี้</button>
+                    <h3 style="color:#ef4444">TEAM B</h3>
+                    <button class="btn btn-gray" style="font-size:0.7rem; padding:5px 10px;" onclick="switchSide('right')">อยู่ฝั่งนี้</button>
                     <div id="listRight" style="width:100%; margin-top:10px;"></div>
                 </div>
             </div>
@@ -94,200 +141,238 @@
     <div id="gameScreen" class="screen" style="background:black;">
         <div id="viewport">
             <div id="world">
-                <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); color:#333; font-size:1.5rem; pointer-events:none;">BATTLEFIELD</div>
-                <div id="baseLeft" class="base" style="left: 100px;">
-                    <div class="base-icon" style="color:#ef4444">🏰</div>
-                    <div class="hp-bar"><div id="hpLeft" class="hp-fill" style="background:#ef4444;"></div></div>
+                <div class="base" style="left: 100px;">
+                    🏰<div class="hp-bar-con"><div id="hpLeft" class="hp-fill" style="background:#3b82f6;"></div></div>
                 </div>
-                <div id="baseRight" class="base" style="right: 100px;">
-                    <div class="base-icon" style="color:#3b82f6">🏰</div>
-                    <div class="hp-bar"><div id="hpRight" class="hp-fill" style="background:#3b82f6;"></div></div>
+                <div class="base" style="right: 100px;">
+                    🏰<div class="hp-bar-con"><div id="hpRight" class="hp-fill" style="background:#ef4444;"></div></div>
                 </div>
                 <div id="unitsLayer"></div>
+                <div id="fxLayer"></div>
             </div>
         </div>
-        <div id="hud">
-            <div class="energy-box">⚡ <span id="energyVal">0</span></div>
-            <div class="dock">
-                <div class="card" onclick="spawn('sword', 20)"><div class="cost-badge">20</div><div style="font-size:2rem;">⚔️</div><small>ดาบ</small></div>
-                <div class="card" onclick="spawn('bow', 40)"><div class="cost-badge">40</div><div style="font-size:2rem;">🏹</div><small>ธนู</small></div>
-                <div class="card" onclick="spawn('tank', 70)"><div class="cost-badge">70</div><div style="font-size:2rem;">🛡️</div><small>แทงค์</small></div>
-                <div class="card" onclick="spawn('mage', 100)"><div class="cost-badge">100</div><div style="font-size:2rem;">🔮</div><small>เวท</small></div>
-            </div>
-        </div>
-    </div>
 
-    <div id="resultScreen" class="screen">
-        <h1 id="winnerText">WINNER</h1>
-        <button class="btn btn-gold" onclick="location.reload()">กลับหน้าหลัก</button>
+        <div class="hud-top">
+            <div class="energy-badge">⚡ <span id="energyVal">0</span></div>
+        </div>
+
+        <div class="dock">
+            <div class="card" onclick="spawn('sword', 20)">
+                <div class="card-icon">⚔️</div><div class="card-cost">20</div>
+            </div>
+            <div class="card" onclick="spawn('bow', 40)">
+                <div class="card-icon">🏹</div><div class="card-cost">40</div>
+            </div>
+            <div class="card" onclick="spawn('tank', 70)">
+                <div class="card-icon">🛡️</div><div class="card-cost">70</div>
+            </div>
+            <div class="card" onclick="spawn('mage', 100)">
+                <div class="card-icon">🔮</div><div class="card-cost">100</div>
+            </div>
+        </div>
     </div>
 
     <script>
         const socket = io();
-        let myId = null;
-        let roomId = null;
         let mySide = null;
+        let roomId = null;
         let energy = 0;
 
-        // --- LOBBY ---
+        // --- LOBBY SYSTEM ---
         function createRoom() {
             const name = document.getElementById('playerName').value || 'Host';
             const mode = document.getElementById('gameMode').value;
             socket.emit('create_room', { name, mode });
         }
+
         function joinRoom() {
-            const name = document.getElementById('playerName').value || 'Guest';
-            const code = document.getElementById('roomCodeInput').value.trim().toUpperCase();
+            const name = document.getElementById('playerName').value || 'Player';
+            const code = document.getElementById('roomCodeInput').value;
+            if(!code) return showMsg("ใส่รหัสห้องก่อนครับ");
             socket.emit('join_room', { roomId: code, name });
         }
-        function switchSide(s) { if(roomId) socket.emit('select_side', { roomId, side: s }); }
-        function toggleReady() { if(roomId) socket.emit('toggle_ready', roomId); }
 
+        function showMsg(txt) {
+            document.getElementById('msgBox').innerText = txt;
+        }
+
+        // ฟังผลจาก Server
         socket.on('room_created', (data) => {
             roomId = data.roomId;
             enterLobby();
         });
 
+        socket.on('join_success', (data) => {
+            roomId = data.roomId;
+            enterLobby();
+        });
+
+        socket.on('error_msg', (msg) => showMsg(msg));
+
         socket.on('update_lobby', (players) => {
-            if(!roomId && players.length) roomId = players[0].roomId; // Safety
+            // Update Title
             document.getElementById('lobbyTitle').innerText = `Room: ${roomId}`;
             
+            // Clear Lists
             const l = document.getElementById('listLeft');
             const r = document.getElementById('listRight');
             l.innerHTML=''; r.innerHTML='';
-            
+
             const me = players.find(p => p.id === socket.id);
-            if(me) { mySide = me.side; }
+            if(me) mySide = me.side;
 
+            // Render Players
             players.forEach(p => {
-                const el = document.createElement('div');
-                el.className = 'player-item';
-                el.style.borderLeftColor = p.color;
-                el.innerHTML = `<span>${p.name}</span> <span class="ready-tag ${p.ready?'yes':''}">${p.ready?'READY':'...'}</span>`;
-                if(p.side === 'left') l.appendChild(el); 
-                else if(p.side === 'right') r.appendChild(el);
+                const div = document.createElement('div');
+                div.className = 'player-card';
+                div.style.borderLeftColor = p.color;
+                div.innerHTML = `<span>${p.name}</span> <span>${p.ready ? '✅' : '...'}</span>`;
+                if(p.side === 'left') l.appendChild(div);
+                else if(p.side === 'right') r.appendChild(div);
             });
 
+            // Update Ready Button
             const btn = document.getElementById('readyBtn');
-            btn.innerText = me && me.ready ? "ยกเลิก" : "พร้อม";
-            btn.className = me && me.ready ? "btn btn-gold" : "btn btn-gray";
-            
-            renderColorPicker(players);
+            if(me) {
+                btn.innerText = me.ready ? "ยกเลิก" : "พร้อม !";
+                btn.className = me.ready ? "btn btn-gold" : "btn btn-gray";
+            }
         });
-        
-        const PLAYER_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#ec4899'];
-        function renderColorPicker(players) {
-            const box = document.getElementById('colorPicker');
-            box.innerHTML = '';
-            PLAYER_COLORS.forEach(c => {
-                const isTaken = players.some(p => p.color === c && p.id !== socket.id);
-                const btn = document.createElement('div');
-                btn.className = `color-btn ${isTaken?'taken':''}`;
-                btn.style.backgroundColor = c;
-                if(!isTaken) btn.onclick = () => socket.emit('select_color', { roomId, color: c });
-                box.appendChild(btn);
-            });
-        }
+
+        function switchSide(s) { socket.emit('select_side', { roomId, side: s }); }
+        function toggleReady() { socket.emit('toggle_ready', roomId); }
 
         function enterLobby() {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.getElementById('lobbyScreen').classList.add('active');
         }
 
-        // --- GAME START ---
+        // --- GAME START & CAMERA ---
         socket.on('start_game', () => {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.getElementById('gameScreen').style.display = 'block';
             
+            // Setup Mobile Camera
             const vp = document.getElementById('viewport');
+            // เริ่มต้นกล้อง: ถ้าอยู่ขวา ให้เลื่อนไปขวาสุด
             let startX = mySide === 'right' ? -(1600 - vp.clientWidth) : 0;
-            document.getElementById('world').style.transform = `translate(${startX}px, -${(900-vp.clientHeight)/2}px)`;
-            
-            // Activate camera drag
-            initCamera(startX, -(900-vp.clientHeight)/2);
+            initCamera(startX, -(900 - vp.clientHeight)/2);
         });
 
-        // --- GAMEPLAY UPDATE ---
+        function initCamera(ix, iy) {
+            const vp = document.getElementById('viewport');
+            const world = document.getElementById('world');
+            let x = ix, y = iy;
+            let isDrag = false, startX, startY, curX, curY;
+
+            const update = () => world.style.transform = `translate(${x}px, ${y}px)`;
+            update();
+
+            // Mobile & Desktop Events
+            const start = (e) => {
+                isDrag = true;
+                const touch = e.touches ? e.touches[0] : e;
+                startX = touch.pageX - x;
+                startY = touch.pageY - y;
+            };
+            const move = (e) => {
+                if(!isDrag) return;
+                e.preventDefault(); // กันจอมือถือเลื่อน
+                const touch = e.touches ? e.touches[0] : e;
+                x = touch.pageX - startX;
+                y = touch.pageY - startY;
+                
+                // ขอบเขตกล้อง (Clamp)
+                const minX = -(1600 - vp.clientWidth);
+                const minY = -(900 - vp.clientHeight);
+                if(x > 0) x = 0; if(x < minX) x = minX;
+                if(y > 0) y = 0; if(y < minY) y = minY;
+                
+                update();
+            };
+            const end = () => isDrag = false;
+
+            vp.addEventListener('mousedown', start);
+            vp.addEventListener('touchstart', start, {passive: false});
+            window.addEventListener('mousemove', move);
+            window.addEventListener('touchmove', move, {passive: false});
+            window.addEventListener('mouseup', end);
+            window.addEventListener('touchend', end);
+        }
+
+        // --- GAMEPLAY RENDER ---
         function spawn(type, cost) {
             if(energy >= cost) socket.emit('spawn_request', { roomId, type });
         }
 
+        const ICONS = { sword: '⚔️', bow: '🏹', tank: '🛡️', mage: '🔮' };
+
         socket.on('world_update', (data) => {
-            // Update Energy & Bases
+            // 1. Energy & Cards
             energy = Math.floor(data.e[mySide] || 0);
             document.getElementById('energyVal').innerText = energy;
             document.querySelectorAll('.card').forEach(c => {
-                const cost = parseInt(c.querySelector('.cost-badge').innerText);
+                const cost = parseInt(c.querySelector('.card-cost').innerText);
                 if(energy < cost) c.classList.add('disabled'); else c.classList.remove('disabled');
             });
-            
+
+            // 2. Bases
             document.getElementById('hpLeft').style.width = (data.b.left/10) + '%';
             document.getElementById('hpRight').style.width = (data.b.right/10) + '%';
 
-            // Render Units
+            // 3. Units (With Animations)
             const layer = document.getElementById('unitsLayer');
-            const existIds = new Set();
-            const ICONS = { sword: '⚔️', bow: '🏹', tank: '🛡️', mage: '🔮' };
+            const activeIds = new Set();
 
             data.u.forEach(u => {
-                existIds.add(u.i);
+                activeIds.add(u.i);
                 let el = document.getElementById(u.i);
                 if(!el) {
                     el = document.createElement('div');
                     el.id = u.i;
-                    el.className = `unit ${u.s}`;
+                    el.className = 'unit';
                     el.innerText = ICONS[u.t];
                     el.style.backgroundColor = u.c;
                     el.style.borderColor = u.c;
-                    el.style.boxShadow = `0 0 5px ${u.c}`;
+                    el.style.boxShadow = `0 0 10px ${u.c}`;
                     layer.appendChild(el);
                 }
+                
+                // Update Pos
                 el.style.left = u.x + 'px';
                 el.style.top = u.y + 'px';
-                el.style.opacity = (u.h / (u.t==='tank'?80:30)) + 0.3; 
+                
+                // Animation Class
+                el.className = `unit ${u.act}`; // walk, attack, idle
             });
 
-            Array.from(layer.children).forEach(child => {
-                if(!existIds.has(child.id)) child.remove();
+            // ลบตัวที่ตาย
+            Array.from(layer.children).forEach(el => {
+                if(!activeIds.has(el.id)) el.remove();
             });
+
+            // 4. Effects (Floating Text)
+            if(data.fx) {
+                const fxLayer = document.getElementById('fxLayer');
+                data.fx.forEach(fx => {
+                    if(fx.type === 'dmg') {
+                        const txt = document.createElement('div');
+                        txt.className = 'dmg-text';
+                        txt.innerText = `-${fx.val}`;
+                        txt.style.left = fx.x + 'px';
+                        txt.style.top = (fx.y - 20) + 'px';
+                        fxLayer.appendChild(txt);
+                        setTimeout(() => txt.remove(), 800); // ลบออกเมื่ออนิเมชั่นจบ
+                    }
+                });
+            }
         });
 
         socket.on('game_over', (data) => {
-            document.getElementById('resultScreen').classList.add('active');
-            const txt = document.getElementById('winnerText');
-            const win = data.winner === mySide;
-            txt.innerText = win ? "VICTORY" : "DEFEAT";
-            txt.style.color = win ? "#FFD700" : "#ef4444";
+            alert(data.winner === mySide ? "VICTORY!" : "DEFEAT!");
+            location.reload();
         });
 
-        // --- CAMERA LOGIC ---
-        function initCamera(initialX, initialY) {
-            const vp = document.getElementById('viewport');
-            let camX = initialX, camY = initialY;
-            let isDrag=false, startX=0, startY=0, curX=0, curY=0;
-
-            const update = () => document.getElementById('world').style.transform = `translate(${camX}px, ${camY}px)`;
-            
-            const start = (x, y) => { isDrag=true; startX=x; startY=y; curX=camX; curY=camY; };
-            const move = (x, y) => {
-                if(!isDrag) return;
-                camX = curX + (x - startX);
-                camY = curY + (y - startY);
-                // Clamp
-                if(camX > 0) camX = 0;
-                if(camX < -(1600 - vp.clientWidth)) camX = -(1600 - vp.clientWidth);
-                if(camY > 0) camY = 0;
-                if(camY < -(900 - vp.clientHeight)) camY = -(900 - vp.clientHeight);
-                update();
-            };
-
-            vp.addEventListener('mousedown', e => start(e.pageX, e.pageY));
-            vp.addEventListener('touchstart', e => start(e.touches[0].pageX, e.touches[0].pageY), {passive:false});
-            window.addEventListener('mousemove', e => move(e.pageX, e.pageY));
-            window.addEventListener('touchmove', e => move(e.touches[0].pageX, e.touches[0].pageY), {passive:false});
-            window.addEventListener('mouseup', () => isDrag=false);
-            window.addEventListener('touchend', () => isDrag=false);
-        }
     </script>
 </body>
 </html>
