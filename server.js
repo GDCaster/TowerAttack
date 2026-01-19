@@ -18,9 +18,12 @@ const SPECS = {
     sword:    { hp: 45,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 800 },
     bow:      { hp: 25,  dmg: 4,  range: 300, speed: 2.5, size: 30, cost: 50, atkRate: 1200 },
     tank:     { hp: 140, dmg: 3,  range: 50,  speed: 1.2, size: 36, cost: 70, atkRate: 1200 },
-    mage:     { hp: 30,  dmg: 12, range: 250, speed: 1.8, size: 30, cost: 100, atkRate: 1500, type:'aoe', radius: 60 },
-    assassin: { hp: 30,  dmg: 10, range: 40,  speed: 4.5, size: 25, cost: 50, atkRate: 500, special: 'jump' },
-    cannon:   { hp: 70,  dmg: 25, range: 450, speed: 1.5, size: 40, cost: 175, atkRate: 2500, type:'aoe', radius: 100 }
+    // [NERF] Mage ลดดาเมจลง (12 -> 9)
+    mage:     { hp: 30,  dmg: 9, range: 250, speed: 1.8, size: 30, cost: 100, atkRate: 1500, type:'aoe', radius: 40 },
+    // [BUFF/REWORK] Assassin ราคา 75, ตีแรงขึ้น, ระยะตีไกลขึ้นนิดหน่อย(80) เพื่อตวัด, มี radius สำหรับตวัด
+    assassin: { hp: 30,  dmg: 20, range: 80,  speed: 4.5, size: 25, cost: 75, atkRate: 600, special: 'jump', type: 'melee-aoe', radius: 50 },
+    // [NERF] Cannon ลดดาเมจ (25 -> 18) และลดระยะ (450 -> 350)
+    cannon:   { hp: 70,  dmg: 18, range: 350, speed: 1.5, size: 40, cost: 175, atkRate: 2500, type:'aoe', radius: 60 }
 };
 
 const BOT_SETTINGS = {
@@ -35,9 +38,9 @@ const COLORS = [
 ];
 
 let rooms = {};
-let matchQueue = []; // [NEW] คิวสำหรับคนหาห้อง
+let matchQueue = [];
 
-// ... (GAME LOOP คงเดิม ไม่ต้องแก้) ...
+// Game Loop
 setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
@@ -45,6 +48,16 @@ setInterval(() => {
             delete rooms[roomId];
             continue;
         }
+        
+        // จัดการนับถอยหลัง Auto Match
+        if (room.autoStartTimer && room.status === 'waiting') {
+            const timeLeft = Math.ceil((room.autoStartTime - Date.now()) / 1000);
+            if (timeLeft <= 0) {
+                // หมดเวลาบังคับเริ่ม
+                forceStartGame(roomId);
+            }
+        }
+
         if (room.status === 'playing') {
             updateGame(room);
             const packet = {
@@ -69,9 +82,11 @@ setInterval(() => {
         }
     }
 }, 50);
-// ... (ฟังก์ชัน updateGame, spawnUnit, ฯลฯ คงเดิม) ...
-function updateGame(room) { /* Code เดิม */ 
+
+function updateGame(room) {
     const now = Date.now();
+    
+    // Regen Energy
     room.players.forEach(p => {
         if (p.energy < MAX_ENERGY) {
             const rate = p.isBot ? BOT_SETTINGS[room.difficulty].regen : 0.2;
@@ -79,32 +94,41 @@ function updateGame(room) { /* Code เดิม */
         }
         if (p.isBot) runBotLogic(room, p);
     });
+
+    // Clean Dead Units
     for (let i = room.units.length - 1; i >= 0; i--) {
         if (room.units[i].dead) room.units.splice(i, 1);
     }
+
+    // Unit Logic
     room.units.forEach(u => {
         u.action = 'idle';
         let target = null;
         let minDist = 999;
+
+        // Find Target
         room.units.forEach(o => {
             if (o.side !== u.side && !o.dead) {
                 const dist = Math.hypot(u.x - o.x, u.y - o.y);
                 if (dist < minDist) { minDist = dist; target = o; }
             }
         });
+
+        // [ASSASSIN] Warp Logic Update: วาร์ปใส่ใครก็ได้
         if (u.type === 'assassin' && target && !u.hasJumped && minDist < 350) {
-            if (['bow','mage','cannon'].includes(target.type)) {
-                const offset = u.side === 'left' ? 40 : -40;
-                u.x = target.x + offset;
-                u.y = target.y;
-                u.hasJumped = true;
-                room.effects.push({ type: 'warp', x: u.x, y: u.y });
-            }
+            // ไม่เช็ค type เป้าหมายแล้ว วาร์ปใส่ได้หมด
+            const offset = u.side === 'left' ? 40 : -40; // วาร์ปไปด้านหลัง
+            u.x = target.x + offset;
+            u.y = target.y;
+            u.hasJumped = true;
+            room.effects.push({ type: 'warp', x: u.x, y: u.y });
         }
+
         const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
         const distToBase = Math.abs(u.x - enemyBaseX);
         const canHitBase = distToBase <= SPECS[u.type].range;
         
+        // Attack Logic
         if (canHitBase) {
             if (now - u.lastAttack > SPECS[u.type].atkRate) {
                 u.lastAttack = now;
@@ -118,15 +142,35 @@ function updateGame(room) { /* Code เดิม */
             if (now - u.lastAttack > SPECS[u.type].atkRate) {
                 u.lastAttack = now;
                 u.action = 'attack';
+                
                 if (u.type === 'mage' || u.type === 'cannon') {
                     spawnProjectile(room, u, target);
-                } else {
+                } 
+                // [ASSASSIN] Melee AOE (ตวัด)
+                else if (u.type === 'assassin') {
+                    // ตีศัตรูทุกตัวในระยะ radius รอบตัว assassin
+                    room.units.forEach(enemy => {
+                        if(enemy.side !== u.side && !enemy.dead) {
+                            const d = Math.hypot(u.x - enemy.x, u.y - enemy.y);
+                            if(d <= SPECS.assassin.radius) {
+                                enemy.hp -= u.dmg;
+                                room.effects.push({ type: 'dmg', x: enemy.x, y: enemy.y, val: u.dmg });
+                                if (enemy.hp <= 0) enemy.dead = true;
+                            }
+                        }
+                    });
+                    // สร้าง Effect ตวัด (AOE visual)
+                    room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.assassin.radius, t: 'assassin' });
+                }
+                // Normal Melee
+                else {
                     target.hp -= u.dmg;
                     room.effects.push({ type: 'dmg', x: target.x, y: target.y, val: u.dmg });
                     if (target.hp <= 0) target.dead = true;
                 }
             }
         } else {
+            // Move
             const dir = u.side === 'left' ? 1 : -1;
             u.x += dir * u.speed;
             u.action = 'walk';
@@ -135,8 +179,10 @@ function updateGame(room) { /* Code เดิม */
             if (u.y > mid + 100) u.y -= 0.5;
         }
     });
+
     updateProjectiles(room);
 }
+
 function spawnProjectile(room, owner, target) {
     room.projectiles.push({
         x: owner.x, y: owner.y, tx: target.x, ty: target.y,
@@ -145,6 +191,7 @@ function spawnProjectile(room, owner, target) {
         type: owner.type, side: owner.side
     });
 }
+
 function updateProjectiles(room) {
     for (let i = room.projectiles.length - 1; i >= 0; i--) {
         const p = room.projectiles[i];
@@ -172,6 +219,7 @@ function updateProjectiles(room) {
         }
     }
 }
+
 function runBotLogic(room, bot) {
     if (Math.random() < BOT_SETTINGS[room.difficulty].aggro) {
         const types = Object.keys(SPECS);
@@ -181,6 +229,7 @@ function runBotLogic(room, bot) {
         }
     }
 }
+
 function spawnUnit(room, player, type) {
     if (player.energy < SPECS[type].cost) return;
     player.energy -= SPECS[type].cost;
@@ -197,61 +246,58 @@ function spawnUnit(room, player, type) {
         });
     }
 }
+
 function endGame(room, winner) {
     room.status = 'finished';
     io.to(room.id).emit('game_over', { winner });
     setTimeout(() => { delete rooms[room.id]; }, 3000);
 }
 
-// [NEW] ฟังก์ชันเช็คคิวและจับคู่
+function forceStartGame(roomId) {
+    const r = rooms[roomId];
+    if(r && r.status === 'waiting') {
+        r.status = 'playing';
+        r.autoStartTimer = null;
+        io.to(roomId).emit('start_game', { players: r.players });
+    }
+}
+
+// [UPDATED] Matchmaking: ส่งไป Lobby แทนการเริ่มเกมเลย
 function checkMatchQueue() {
-    // ต้องมีอย่างน้อย 2 คนเพื่อเริ่มเกม
     if (matchQueue.length >= 2) {
-        // ดึง 2 คนแรกออกจากคิว
         const p1 = matchQueue.shift();
         const p2 = matchQueue.shift();
 
         const roomId = "AUTO_" + Math.random().toString(36).substr(2, 5).toUpperCase();
         
-        // สร้างห้อง
         rooms[roomId] = {
             id: roomId, mode: '1v1', difficulty: 'normal',
             maxPlayers: 2, status: 'waiting', bases: { left: 1000, right: 1000 },
             units: [], projectiles: [], effects: [],
-            players: []
+            players: [],
+            isAutoMatch: true,
+            autoStartTime: Date.now() + 30000, // 30 วินาทีจากนี้
+            autoStartTimer: true
         };
 
         const r = rooms[roomId];
+        // ยังไม่ Ready ต้องกดเอง หรือรอเวลา
+        r.players.push({ id: p1.id, name: p1.name, side: 'left', ready: false, color: COLORS[0], energy: 0, isBot: false });
+        r.players.push({ id: p2.id, name: p2.name, side: 'right', ready: false, color: COLORS[1], energy: 0, isBot: false });
 
-        // ใส่ Player 1 (Left)
-        r.players.push({ 
-            id: p1.id, name: p1.name, side: 'left', ready: true, 
-            color: COLORS[0], energy: 0, isBot: false 
-        });
-
-        // ใส่ Player 2 (Right)
-        r.players.push({ 
-            id: p2.id, name: p2.name, side: 'right', ready: true, 
-            color: COLORS[1], energy: 0, isBot: false 
-        });
-
-        // ส่งทั้งคู่เข้าห้องและเริ่มเกมทันที
         const p1Socket = io.sockets.sockets.get(p1.id);
         const p2Socket = io.sockets.sockets.get(p2.id);
 
-        if (p1Socket) { p1Socket.join(roomId); p1Socket.emit('join_success', { roomId }); }
-        if (p2Socket) { p2Socket.join(roomId); p2Socket.emit('join_success', { roomId }); }
+        if (p1Socket) { p1Socket.join(roomId); p1Socket.emit('join_success', { roomId, isAuto: true }); }
+        if (p2Socket) { p2Socket.join(roomId); p2Socket.emit('join_success', { roomId, isAuto: true }); }
         
+        // แจ้งเตือนเวลาเริ่ม
+        io.to(roomId).emit('auto_match_timer', { seconds: 30 });
         updateLobby(roomId);
-        
-        // เริ่มเกมอัตโนมัติ
-        r.status = 'playing';
-        io.to(roomId).emit('start_game', { players: r.players });
     }
 }
 
 io.on('connection', (socket) => {
-    // ... (create_room, join_room, etc. คงเดิม) ...
     socket.on('create_room', (data) => {
         const roomId = Math.random().toString(36).substr(2, 5).toUpperCase();
         const maxPlayers = data.mode === '2v2' ? 4 : 2;
@@ -294,6 +340,9 @@ io.on('connection', (socket) => {
     socket.on('select_side', (d) => {
         const r = rooms[d.roomId];
         if(!r) return;
+        // ถ้าเป็น Auto Match ห้ามเปลี่ยนฝั่ง (ล็อคไว้)
+        if(r.isAutoMatch) return; 
+
         const p = r.players.find(x => x.id === socket.id);
         const limit = r.mode === '2v2' ? 2 : 1;
         if(p && r.players.filter(x => x.side === d.side).length < limit) {
@@ -317,10 +366,12 @@ io.on('connection', (socket) => {
         if(p) p.ready = !p.ready;
         updateLobby(rid);
         
+        // เช็คว่าเริ่มเกมได้หรือยัง
         const hasL = r.players.some(x=>x.side==='left');
         const hasR = r.players.some(x=>x.side==='right');
         if (r.players.length >= 2 && r.players.every(x => x.ready && x.side) && hasL && hasR) {
             r.status = 'playing';
+            r.autoStartTimer = null; // ยกเลิกตัวนับถอยหลังถ้าทุกคนพร้อม
             io.to(rid).emit('start_game', { players: r.players });
         }
     });
@@ -341,27 +392,19 @@ io.on('connection', (socket) => {
         }
     });
 
-    // [NEW] Event: เริ่มค้นหาห้อง
     socket.on('find_match', (data) => {
-        // เช็คว่าอยู่ในคิวหรือยัง
         if (!matchQueue.some(p => p.id === socket.id)) {
             matchQueue.push({ id: socket.id, name: data.name });
-            console.log(`User ${data.name} joined queue. Total: ${matchQueue.length}`);
-            checkMatchQueue(); // ลองจับคู่ดู
+            checkMatchQueue();
         }
     });
 
-    // [NEW] Event: ยกเลิกการค้นหา
     socket.on('cancel_match', () => {
         const idx = matchQueue.findIndex(p => p.id === socket.id);
-        if (idx !== -1) {
-            matchQueue.splice(idx, 1);
-            console.log(`User left queue. Total: ${matchQueue.length}`);
-        }
+        if (idx !== -1) matchQueue.splice(idx, 1);
     });
 
     socket.on('disconnect', () => {
-        // [NEW] ลบออกจากคิวถ้าหลุด
         const qIdx = matchQueue.findIndex(p => p.id === socket.id);
         if (qIdx !== -1) matchQueue.splice(qIdx, 1);
 

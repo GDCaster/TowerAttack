@@ -15,10 +15,8 @@
         @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
         @keyframes expand { 0% { transform: translate(-50%,-50%) scale(0); opacity: 0.8; } 100% { transform: translate(-50%,-50%) scale(2); opacity: 0; } }
         
-        /* Animation */
         @keyframes walkAnim { 0% { transform: translate(-50%,-50%) rotate(-5deg); } 50% { transform: translate(-50%,-50%) rotate(5deg); } 100% { transform: translate(-50%,-50%) rotate(-5deg); } }
         @keyframes atkAnim { 0% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-50%) scale(1.4); } 100% { transform: translate(-50%,-50%) scale(1); } }
-        /* Pulse for Matchmaking */
         @keyframes pulse { 0% { opacity: 0.5; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0.5; transform: scale(0.9); } }
 
         .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 50; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
@@ -37,6 +35,9 @@
         .color-dot { width: 30px; height: 30px; border-radius: 50%; display: inline-block; margin: 3px; cursor: pointer; border: 2px solid transparent; }
         .color-dot.selected { border-color: white; transform: scale(1.1); }
         .color-dot.disabled { opacity: 0.2; pointer-events: none; }
+        
+        /* [NEW] Countdown Timer in Lobby */
+        #autoTimer { color: #ff4757; font-size: 18px; font-weight: bold; margin-bottom: 5px; display: none; text-align: center; }
 
         #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 1; background: #111; touch-action: none; }
         #world { 
@@ -86,7 +87,6 @@
         #chatSendBtn { width: 60px; background: var(--gold); border: none; border-radius: 0 0 8px 0; font-weight: bold; color: black; cursor: pointer; }
         #chatSendBtn:active { background: #e5c100; }
 
-        /* [NEW] Matchmaking UI */
         #matchScreen { text-align: center; }
         .loader { width: 50px; height: 50px; border: 5px solid #333; border-top: 5px solid var(--gold); border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -132,6 +132,9 @@
                 <h2 id="lTitle">Room</h2>
                 <button class="btn btn-gray" style="padding:5px 10px; font-size:12px;" onclick="location.reload()">ออก</button>
             </div>
+            
+            <div id="autoTimer">เริ่มเกมอัตโนมัติใน: <span id="timerNum">30</span>s</div>
+
             <div id="cPal" style="margin:10px 0; text-align:center;"></div>
             <div class="team-con">
                 <div class="team-col">
@@ -173,7 +176,7 @@
         <div class="dock">
             <div class="card" onclick="spawn('sword',20)"><span class="c-icon">⚔️</span><span class="c-cost">20</span></div>
             <div class="card" onclick="spawn('bow',50)"><span class="c-icon">🏹</span><span class="c-cost">50</span></div>
-            <div class="card" onclick="spawn('assassin',50)"><span class="c-icon">🥷</span><span class="c-cost">50</span></div>
+            <div class="card" onclick="spawn('assassin',75)"><span class="c-icon">🥷</span><span class="c-cost">75</span></div>
             <div class="card" onclick="spawn('tank',70)"><span class="c-icon">🛡️</span><span class="c-cost">70</span></div>
             <div class="card" onclick="spawn('mage',100)"><span class="c-icon">🔮</span><span class="c-cost">100</span></div>
             <div class="card" onclick="spawn('cannon',175)"><span class="c-icon">💣</span><span class="c-cost">175</span></div>
@@ -183,6 +186,7 @@
     <script>
         const socket = io();
         let rid=null, mySide=null, eng=0;
+        let timerInterval = null;
         const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣' };
 
         // --- MENU & LOBBY ---
@@ -191,8 +195,31 @@
         function joinRoom(){ const c=v('rCode'); if(c) socket.emit('join_room', { roomId:c, name: v('pName')||'Joiner' }); else alert('ใส่รหัสห้อง'); }
         function v(id){ return document.getElementById(id).value; }
         
-        socket.on('join_success', d=>{ rid=d.roomId; toScr('lobbyScreen'); });
-        socket.on('room_created', d=>{ rid=d.roomId; toScr('lobbyScreen'); });
+        socket.on('join_success', d=>{ 
+            rid=d.roomId; 
+            toScr('lobbyScreen'); 
+            
+            // ถ้าเป็น Auto Match ให้แสดง Timer
+            if(d.isAuto) {
+                document.getElementById('autoTimer').style.display = 'block';
+            } else {
+                document.getElementById('autoTimer').style.display = 'none';
+            }
+        });
+
+        // รับค่า Timer จาก Server
+        socket.on('auto_match_timer', d=>{
+            let sec = d.seconds;
+            const el = document.getElementById('timerNum');
+            if(timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(()=>{
+                sec--;
+                el.innerText = sec;
+                if(sec <= 0) clearInterval(timerInterval);
+            }, 1000);
+        });
+
+        socket.on('room_created', d=>{ rid=d.roomId; toScr('lobbyScreen'); document.getElementById('autoTimer').style.display = 'none'; });
         socket.on('error_msg', m=>alert(m));
 
         socket.on('update_lobby', d=>{
@@ -230,7 +257,7 @@
         function tReady(){ socket.emit('toggle_ready', rid); }
         function toScr(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
 
-        // [NEW] Matchmaking Functions
+        // Matchmaking
         function startMatchmaking() {
             const name = v('pName') || 'Player';
             socket.emit('find_match', { name });
@@ -243,10 +270,10 @@
 
         // --- GAME LOGIC ---
         socket.on('start_game', (data)=>{ 
+            if(timerInterval) clearInterval(timerInterval);
             toScr('gameScreen'); 
             initCamera(); 
 
-            // แสดงรายชื่อคนในแต่ละทีม
             const leftNames = data.players.filter(p=>p.side==='left').map(p=>p.name).join(', ');
             const rightNames = data.players.filter(p=>p.side==='right').map(p=>p.name).join(', ');
             document.getElementById('nameL').innerText = leftNames;
@@ -296,7 +323,6 @@
                 }
                 el.style.left = u.x+'px'; el.style.top = u.y+'px';
                 
-                // Update Animation
                 el.classList.remove('walk', 'attack');
                 if(u.act === 'walk') el.classList.add('walk');
                 else if(u.act === 'attack') el.classList.add('attack');
@@ -319,6 +345,8 @@
                     const e=document.createElement('div'); e.className='aoe'; 
                     e.style.left=f.x+'px'; e.style.top=f.y+'px';
                     e.style.width=(f.r*2)+'px'; e.style.height=(f.r*2)+'px';
+                    // ถ้าเป็น assassin ให้ effect สีต่างหน่อยก็ได้ (ใน CSS ใช้ขาวเหมือนกัน)
+                    if(f.t === 'assassin') e.style.borderColor = '#ff4757'; 
                     fxL.appendChild(e); setTimeout(()=>e.remove(),400);
                 } else if(f.type==='warp'){
                     const e=document.createElement('div'); e.innerText='💨'; e.style.position='absolute';
