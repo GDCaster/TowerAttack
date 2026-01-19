@@ -50,13 +50,27 @@
             will-change: transform;
         }
         
+        /* Base & Name Styles */
         .base { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; text-align: center; font-size: 50px; }
+        .team-name {
+            position: absolute; top: 40%; transform: translate(-50%, -50%);
+            color: #aaa; font-size: 20px; font-weight: bold; white-space: nowrap;
+            z-index: 4; text-shadow: 1px 1px 0 #000;
+        }
+        
+        /* Unit & Owner Name */
         .unit { 
             position: absolute; width: 30px; height: 30px; border-radius: 50%; 
             transform: translate(-50%, -50%); z-index: 10; display: flex; 
             justify-content: center; align-items: center; border: 2px solid white;
             font-size: 16px; transition: left 0.05s linear, top 0.05s linear;
         }
+        .u-name {
+            position: absolute; top: -16px; left: 50%; transform: translateX(-50%);
+            font-size: 10px; color: white; white-space: nowrap; font-weight: bold;
+            text-shadow: 1px 1px 0 #000; pointer-events: none;
+        }
+
         .hp-bar { width: 80px; height: 6px; background: #333; margin: 0 auto; border-radius: 3px; overflow: hidden; }
         .hp-val { height: 100%; width: 100%; transition: width 0.2s; }
         
@@ -83,20 +97,17 @@
         .c-icon { font-size: 22px; line-height: 1; }
         .c-cost { font-size: 10px; color: var(--gold); background: black; padding: 1px 5px; border-radius: 8px; margin-top: 2px; }
 
-        /* --- Chat Styles Updated --- */
         #chatCon { 
             position: absolute; bottom: 90px; left: 10px; width: 280px; height: 160px; z-index: 100; 
             display: flex; flex-direction: column; pointer-events: none; 
         }
         #chatBox { 
             flex: 1; overflow-y: auto; padding: 8px; color: white; font-size: 13px; pointer-events: auto; 
-            /* สีขาวจางๆ ตามที่ขอ */
             background: rgba(255, 255, 255, 0.15); 
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 8px 8px 0 0;
             margin-bottom: 2px;
         }
-        /* ขอบตัวหนังสือเพื่อให้เห็นชัดบนพื้นขาวจาง */
         #chatBox div {
             text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
         }
@@ -164,6 +175,9 @@
     <div id="gameScreen" class="screen" style="background:black;">
         <div id="viewport">
             <div id="world">
+                <div id="nameL" class="team-name" style="left: 100px;"></div>
+                <div id="nameR" class="team-name" style="right: 100px;"></div>
+
                 <div class="base" style="left:100px; color:#3b82f6;">🏰<div class="hp-bar"><div id="hpL" class="hp-val" style="background:#3b82f6;"></div></div></div>
                 <div class="base" style="right:100px; color:#ef4444;">🏰<div class="hp-bar"><div id="hpR" class="hp-val" style="background:#ef4444;"></div></div></div>
                 <div id="uLayer"></div>
@@ -242,23 +256,25 @@
         function toScr(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
 
         // --- GAME LOGIC ---
-        socket.on('start_game', ()=>{ 
+        socket.on('start_game', (data)=>{ 
             toScr('gameScreen'); 
             initCamera(); 
+
+            // แสดงรายชื่อคนในแต่ละทีมที่ฐาน
+            const leftNames = data.players.filter(p=>p.side==='left').map(p=>p.name).join(', ');
+            const rightNames = data.players.filter(p=>p.side==='right').map(p=>p.name).join(', ');
+            document.getElementById('nameL').innerText = leftNames;
+            document.getElementById('nameR').innerText = rightNames;
         });
 
         function spawn(t,c){ if(eng>=c) socket.emit('spawn_request', { roomId:rid, type:t }); }
         
-        // Chat Functions
-        function checkEnter(e) {
-            if(e.key === 'Enter') sendMsg();
-        }
+        function checkEnter(e) { if(e.key === 'Enter') sendMsg(); }
         function sendMsg() {
             const inp = document.getElementById('chatInp');
             if(inp.value.trim()) {
                 socket.emit('send_chat', { roomId: rid, msg: inp.value.trim() });
                 inp.value = '';
-                // Focus กลับไปที่ input หรือไม่ก็ได้ (บนมือถืออาจจะไม่ focus เพื่อไม่ให้ keyboard บัง)
             }
         }
         
@@ -287,8 +303,10 @@
                 let el = document.getElementById(u.i);
                 if(!el){
                     el = document.createElement('div'); el.id=u.i; el.className='unit';
-                    el.innerText = ICONS[u.t]; el.style.background=u.c; el.style.borderColor=u.c;
+                    el.style.background=u.c; el.style.borderColor=u.c;
                     el.style.boxShadow=`0 0 5px ${u.c}`;
+                    // แสดงชื่อคนเรียกบนหัวทหาร
+                    el.innerHTML = `<div class="u-name">${u.n}</div>${ICONS[u.t]}`;
                     uL.appendChild(el);
                 }
                 el.style.left = u.x+'px'; el.style.top = u.y+'px';

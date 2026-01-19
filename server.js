@@ -14,14 +14,12 @@ const WORLD_W = 1600;
 const WORLD_H = 900;
 const MAX_ENERGY = 200;
 
-// ปรับสมดุล (Balance)
 const SPECS = {
     sword:    { hp: 45,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 800 },
     bow:      { hp: 25,  dmg: 4,  range: 300, speed: 2.5, size: 30, cost: 50, atkRate: 1200 },
     tank:     { hp: 140, dmg: 3,  range: 50,  speed: 1.2, size: 36, cost: 70, atkRate: 1200 },
     mage:     { hp: 30,  dmg: 12, range: 250, speed: 1.8, size: 30, cost: 100, atkRate: 1500, type:'aoe', radius: 60 },
     assassin: { hp: 30,  dmg: 10, range: 40,  speed: 4.5, size: 25, cost: 50, atkRate: 500, special: 'jump' },
-    // ปรับราคา Cannon เป็น 175 ตามสั่ง
     cannon:   { hp: 70,  dmg: 25, range: 450, speed: 1.5, size: 40, cost: 175, atkRate: 2500, type:'aoe', radius: 100 }
 };
 
@@ -38,11 +36,9 @@ const COLORS = [
 
 let rooms = {};
 
-// --- GAME LOOP (20 FPS) ---
 setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
-        
         if (room.players.length === 0) {
             delete rooms[roomId];
             continue;
@@ -56,6 +52,7 @@ setInterval(() => {
                 u: room.units.map(u => ({
                     i: u.id, t: u.type, s: u.side, c: u.color,
                     x: Math.round(u.x), y: Math.round(u.y), h: u.hp,
+                    n: u.owner, // ส่งชื่อเจ้าของไปด้วย
                     act: u.action
                 })),
                 proj: room.projectiles.map(p => ({
@@ -69,7 +66,6 @@ setInterval(() => {
                 packet.myEng = Math.floor(player.energy);
                 io.to(player.id).emit('world_update', packet);
             });
-
             room.effects = [];
         }
     }
@@ -78,7 +74,6 @@ setInterval(() => {
 function updateGame(room) {
     const now = Date.now();
 
-    // 1. Regen & AI
     room.players.forEach(p => {
         if (p.energy < MAX_ENERGY) {
             const rate = p.isBot ? BOT_SETTINGS[room.difficulty].regen : 0.2;
@@ -87,7 +82,6 @@ function updateGame(room) {
         if (p.isBot) runBotLogic(room, p);
     });
 
-    // 2. Units Logic
     for (let i = room.units.length - 1; i >= 0; i--) {
         if (room.units[i].dead) room.units.splice(i, 1);
     }
@@ -97,7 +91,6 @@ function updateGame(room) {
         let target = null;
         let minDist = 999;
 
-        // หาเป้าหมายที่เป็น Unit
         room.units.forEach(o => {
             if (o.side !== u.side && !o.dead) {
                 const dist = Math.hypot(u.x - o.x, u.y - o.y);
@@ -105,7 +98,6 @@ function updateGame(room) {
             }
         });
 
-        // Assassin Jump Logic
         if (u.type === 'assassin' && target && !u.hasJumped && minDist < 350) {
             if (['bow','mage','cannon'].includes(target.type)) {
                 const offset = u.side === 'left' ? 40 : -40;
@@ -116,29 +108,20 @@ function updateGame(room) {
             }
         }
 
-        // --- Base Logic (ปรับปรุงใหม่) ---
-        // คำนวณระยะห่างจากฐานศัตรู (ฐานอยู่ x:100 และ x:WORLD_W-100)
         const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
         const distToBase = Math.abs(u.x - enemyBaseX);
-        
-        // เงื่อนไข: ถ้าอยู่ในระยะยิงของตัวเอง ให้ยิงฐานเลย (ไม่ว่าใกล้หรือไกล)
         const canHitBase = distToBase <= SPECS[u.type].range;
         
         if (canHitBase) {
-            // ตีฐาน
             if (now - u.lastAttack > SPECS[u.type].atkRate) {
                 u.lastAttack = now;
                 u.action = 'attack';
                 const targetSide = u.side === 'left' ? 'right' : 'left';
                 room.bases[targetSide] -= u.dmg;
-                
-                // Effect ขึ้นที่ฐาน
                 room.effects.push({ type: 'dmg', x: enemyBaseX, y: WORLD_H/2, val: u.dmg });
-
                 if (room.bases[targetSide] <= 0) endGame(room, u.side);
             }
         } else if (target && minDist <= SPECS[u.type].range) {
-            // ตี Unit
             if (now - u.lastAttack > SPECS[u.type].atkRate) {
                 u.lastAttack = now;
                 u.action = 'attack';
@@ -151,12 +134,9 @@ function updateGame(room) {
                 }
             }
         } else {
-            // เดินหน้า
             const dir = u.side === 'left' ? 1 : -1;
             u.x += dir * u.speed;
             u.action = 'walk';
-            
-            // เลี้ยงเลนกลาง
             const mid = WORLD_H / 2;
             if (u.y < mid - 100) u.y += 0.5;
             if (u.y > mid + 100) u.y -= 0.5;
@@ -221,11 +201,16 @@ function spawnUnit(room, player, type) {
     for (let i = 0; i < 5; i++) {
         room.units.push({
             id: `${batchId}_${i}`,
-            type, side: player.side, color: player.color,
+            type, 
+            side: player.side, 
+            color: player.color,
+            owner: player.name, // บันทึกชื่อเจ้าของ
             x: player.side === 'left' ? 120 : WORLD_W - 120,
             y: (WORLD_H / 2) + (Math.random() * 200 - 100),
-            hp: SPECS[type].hp, dmg: SPECS[type].dmg,
-            range: SPECS[type].range, speed: SPECS[type].speed,
+            hp: SPECS[type].hp, 
+            dmg: SPECS[type].dmg,
+            range: SPECS[type].range, 
+            speed: SPECS[type].speed,
             lastAttack: 0, dead: false, action: 'idle', hasJumped: false
         });
     }
