@@ -35,7 +35,9 @@ const COLORS = [
 ];
 
 let rooms = {};
+let matchQueue = []; // [NEW] คิวสำหรับคนหาห้อง
 
+// ... (GAME LOOP คงเดิม ไม่ต้องแก้) ...
 setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
@@ -43,16 +45,14 @@ setInterval(() => {
             delete rooms[roomId];
             continue;
         }
-
         if (room.status === 'playing') {
             updateGame(room);
-            
             const packet = {
                 b: room.bases,
                 u: room.units.map(u => ({
                     i: u.id, t: u.type, s: u.side, c: u.color,
                     x: Math.round(u.x), y: Math.round(u.y), h: u.hp,
-                    n: u.owner, // ส่งชื่อเจ้าของไปด้วย
+                    n: u.owner,
                     act: u.action
                 })),
                 proj: room.projectiles.map(p => ({
@@ -60,7 +60,6 @@ setInterval(() => {
                 })),
                 fx: room.effects
             };
-
             room.players.forEach(player => {
                 if(player.isBot) return;
                 packet.myEng = Math.floor(player.energy);
@@ -70,10 +69,9 @@ setInterval(() => {
         }
     }
 }, 50);
-
-function updateGame(room) {
+// ... (ฟังก์ชัน updateGame, spawnUnit, ฯลฯ คงเดิม) ...
+function updateGame(room) { /* Code เดิม */ 
     const now = Date.now();
-
     room.players.forEach(p => {
         if (p.energy < MAX_ENERGY) {
             const rate = p.isBot ? BOT_SETTINGS[room.difficulty].regen : 0.2;
@@ -81,23 +79,19 @@ function updateGame(room) {
         }
         if (p.isBot) runBotLogic(room, p);
     });
-
     for (let i = room.units.length - 1; i >= 0; i--) {
         if (room.units[i].dead) room.units.splice(i, 1);
     }
-
     room.units.forEach(u => {
         u.action = 'idle';
         let target = null;
         let minDist = 999;
-
         room.units.forEach(o => {
             if (o.side !== u.side && !o.dead) {
                 const dist = Math.hypot(u.x - o.x, u.y - o.y);
                 if (dist < minDist) { minDist = dist; target = o; }
             }
         });
-
         if (u.type === 'assassin' && target && !u.hasJumped && minDist < 350) {
             if (['bow','mage','cannon'].includes(target.type)) {
                 const offset = u.side === 'left' ? 40 : -40;
@@ -107,7 +101,6 @@ function updateGame(room) {
                 room.effects.push({ type: 'warp', x: u.x, y: u.y });
             }
         }
-
         const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
         const distToBase = Math.abs(u.x - enemyBaseX);
         const canHitBase = distToBase <= SPECS[u.type].range;
@@ -142,10 +135,8 @@ function updateGame(room) {
             if (u.y > mid + 100) u.y -= 0.5;
         }
     });
-
     updateProjectiles(room);
 }
-
 function spawnProjectile(room, owner, target) {
     room.projectiles.push({
         x: owner.x, y: owner.y, tx: target.x, ty: target.y,
@@ -154,7 +145,6 @@ function spawnProjectile(room, owner, target) {
         type: owner.type, side: owner.side
     });
 }
-
 function updateProjectiles(room) {
     for (let i = room.projectiles.length - 1; i >= 0; i--) {
         const p = room.projectiles[i];
@@ -182,7 +172,6 @@ function updateProjectiles(room) {
         }
     }
 }
-
 function runBotLogic(room, bot) {
     if (Math.random() < BOT_SETTINGS[room.difficulty].aggro) {
         const types = Object.keys(SPECS);
@@ -192,37 +181,77 @@ function runBotLogic(room, bot) {
         }
     }
 }
-
 function spawnUnit(room, player, type) {
     if (player.energy < SPECS[type].cost) return;
     player.energy -= SPECS[type].cost;
     const batchId = Date.now() + Math.random();
-    
     for (let i = 0; i < 5; i++) {
         room.units.push({
             id: `${batchId}_${i}`,
-            type, 
-            side: player.side, 
-            color: player.color,
-            owner: player.name, // บันทึกชื่อเจ้าของ
+            type, side: player.side, color: player.color, owner: player.name,
             x: player.side === 'left' ? 120 : WORLD_W - 120,
             y: (WORLD_H / 2) + (Math.random() * 200 - 100),
-            hp: SPECS[type].hp, 
-            dmg: SPECS[type].dmg,
-            range: SPECS[type].range, 
-            speed: SPECS[type].speed,
+            hp: SPECS[type].hp, dmg: SPECS[type].dmg,
+            range: SPECS[type].range, speed: SPECS[type].speed,
             lastAttack: 0, dead: false, action: 'idle', hasJumped: false
         });
     }
 }
-
 function endGame(room, winner) {
     room.status = 'finished';
     io.to(room.id).emit('game_over', { winner });
     setTimeout(() => { delete rooms[room.id]; }, 3000);
 }
 
+// [NEW] ฟังก์ชันเช็คคิวและจับคู่
+function checkMatchQueue() {
+    // ต้องมีอย่างน้อย 2 คนเพื่อเริ่มเกม
+    if (matchQueue.length >= 2) {
+        // ดึง 2 คนแรกออกจากคิว
+        const p1 = matchQueue.shift();
+        const p2 = matchQueue.shift();
+
+        const roomId = "AUTO_" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        
+        // สร้างห้อง
+        rooms[roomId] = {
+            id: roomId, mode: '1v1', difficulty: 'normal',
+            maxPlayers: 2, status: 'waiting', bases: { left: 1000, right: 1000 },
+            units: [], projectiles: [], effects: [],
+            players: []
+        };
+
+        const r = rooms[roomId];
+
+        // ใส่ Player 1 (Left)
+        r.players.push({ 
+            id: p1.id, name: p1.name, side: 'left', ready: true, 
+            color: COLORS[0], energy: 0, isBot: false 
+        });
+
+        // ใส่ Player 2 (Right)
+        r.players.push({ 
+            id: p2.id, name: p2.name, side: 'right', ready: true, 
+            color: COLORS[1], energy: 0, isBot: false 
+        });
+
+        // ส่งทั้งคู่เข้าห้องและเริ่มเกมทันที
+        const p1Socket = io.sockets.sockets.get(p1.id);
+        const p2Socket = io.sockets.sockets.get(p2.id);
+
+        if (p1Socket) { p1Socket.join(roomId); p1Socket.emit('join_success', { roomId }); }
+        if (p2Socket) { p2Socket.join(roomId); p2Socket.emit('join_success', { roomId }); }
+        
+        updateLobby(roomId);
+        
+        // เริ่มเกมอัตโนมัติ
+        r.status = 'playing';
+        io.to(roomId).emit('start_game', { players: r.players });
+    }
+}
+
 io.on('connection', (socket) => {
+    // ... (create_room, join_room, etc. คงเดิม) ...
     socket.on('create_room', (data) => {
         const roomId = Math.random().toString(36).substr(2, 5).toUpperCase();
         const maxPlayers = data.mode === '2v2' ? 4 : 2;
@@ -312,7 +341,30 @@ io.on('connection', (socket) => {
         }
     });
 
+    // [NEW] Event: เริ่มค้นหาห้อง
+    socket.on('find_match', (data) => {
+        // เช็คว่าอยู่ในคิวหรือยัง
+        if (!matchQueue.some(p => p.id === socket.id)) {
+            matchQueue.push({ id: socket.id, name: data.name });
+            console.log(`User ${data.name} joined queue. Total: ${matchQueue.length}`);
+            checkMatchQueue(); // ลองจับคู่ดู
+        }
+    });
+
+    // [NEW] Event: ยกเลิกการค้นหา
+    socket.on('cancel_match', () => {
+        const idx = matchQueue.findIndex(p => p.id === socket.id);
+        if (idx !== -1) {
+            matchQueue.splice(idx, 1);
+            console.log(`User left queue. Total: ${matchQueue.length}`);
+        }
+    });
+
     socket.on('disconnect', () => {
+        // [NEW] ลบออกจากคิวถ้าหลุด
+        const qIdx = matchQueue.findIndex(p => p.id === socket.id);
+        if (qIdx !== -1) matchQueue.splice(qIdx, 1);
+
         for (const rid in rooms) {
             const r = rooms[rid];
             const idx = r.players.findIndex(p => p.id === socket.id);

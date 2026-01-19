@@ -15,17 +15,11 @@
         @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
         @keyframes expand { 0% { transform: translate(-50%,-50%) scale(0); opacity: 0.8; } 100% { transform: translate(-50%,-50%) scale(2); opacity: 0; } }
         
-        /* --- เพิ่ม Animation การเดินและการโจมตี --- */
-        @keyframes walkAnim { 
-            0% { transform: translate(-50%,-50%) rotate(-5deg); } 
-            50% { transform: translate(-50%,-50%) rotate(5deg); } 
-            100% { transform: translate(-50%,-50%) rotate(-5deg); } 
-        }
-        @keyframes atkAnim { 
-            0% { transform: translate(-50%,-50%) scale(1); } 
-            50% { transform: translate(-50%,-50%) scale(1.4); } 
-            100% { transform: translate(-50%,-50%) scale(1); } 
-        }
+        /* Animation */
+        @keyframes walkAnim { 0% { transform: translate(-50%,-50%) rotate(-5deg); } 50% { transform: translate(-50%,-50%) rotate(5deg); } 100% { transform: translate(-50%,-50%) rotate(-5deg); } }
+        @keyframes atkAnim { 0% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-50%) scale(1.4); } 100% { transform: translate(-50%,-50%) scale(1); } }
+        /* Pulse for Matchmaking */
+        @keyframes pulse { 0% { opacity: 0.5; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0.5; transform: scale(0.9); } }
 
         .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 50; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
         .active { display: flex !important; }
@@ -34,6 +28,7 @@
         .btn { padding: 12px 25px; border-radius: 25px; border: none; font-weight: bold; margin: 10px; cursor: pointer; font-size: 16px; }
         .btn-gold { background: var(--gold); color: black; }
         .btn-gray { background: #333; color: #ccc; }
+        .btn-blue { background: #3b82f6; color: white; box-shadow: 0 0 10px #3b82f6; }
 
         .lobby-box { width: 90%; max-width: 600px; background: #151515; padding: 20px; border-radius: 15px; border: 1px solid #333; max-height: 90vh; overflow-y: auto; }
         .team-con { display: flex; gap: 10px; margin-top: 15px; min-height: 150px; }
@@ -43,31 +38,17 @@
         .color-dot.selected { border-color: white; transform: scale(1.1); }
         .color-dot.disabled { opacity: 0.2; pointer-events: none; }
 
-        #viewport { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            overflow: hidden; z-index: 1; background: #111; 
-            touch-action: none; 
-        }
-        
+        #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 1; background: #111; touch-action: none; }
         #world { 
-            position: absolute; top: 0; left: 0; 
-            width: 1600px; height: 900px; 
+            position: absolute; top: 0; left: 0; width: 1600px; height: 900px; 
             background-color: #0f0f0f;
-            background-image: 
-                linear-gradient(#222 1px, transparent 1px),
-                linear-gradient(90deg, #222 1px, transparent 1px);
-            background-size: 100px 100px; 
-            border: 2px solid #444;
-            transform-origin: 0 0;
-            will-change: transform;
+            background-image: linear-gradient(#222 1px, transparent 1px), linear-gradient(90deg, #222 1px, transparent 1px);
+            background-size: 100px 100px; border: 2px solid #444;
+            transform-origin: 0 0; will-change: transform;
         }
         
         .base { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; text-align: center; font-size: 50px; }
-        .team-name {
-            position: absolute; top: 40%; transform: translate(-50%, -50%);
-            color: #aaa; font-size: 20px; font-weight: bold; white-space: nowrap;
-            z-index: 4; text-shadow: 1px 1px 0 #000;
-        }
+        .team-name { position: absolute; top: 40%; transform: translate(-50%, -50%); color: #aaa; font-size: 20px; font-weight: bold; white-space: nowrap; z-index: 4; text-shadow: 1px 1px 0 #000; }
         
         .unit { 
             position: absolute; width: 30px; height: 30px; border-radius: 50%; 
@@ -75,19 +56,12 @@
             justify-content: center; align-items: center; border: 2px solid white;
             font-size: 16px; transition: left 0.05s linear, top 0.05s linear;
         }
-        /* --- Class สำหรับสั่งเล่น Animation --- */
         .unit.walk { animation: walkAnim 0.5s infinite linear; }
         .unit.attack { animation: atkAnim 0.2s linear; }
-
-        .u-name {
-            position: absolute; top: -16px; left: 50%; transform: translateX(-50%);
-            font-size: 10px; color: white; white-space: nowrap; font-weight: bold;
-            text-shadow: 1px 1px 0 #000; pointer-events: none;
-        }
+        .u-name { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); font-size: 10px; color: white; white-space: nowrap; font-weight: bold; text-shadow: 1px 1px 0 #000; pointer-events: none; }
 
         .hp-bar { width: 80px; height: 6px; background: #333; margin: 0 auto; border-radius: 3px; overflow: hidden; }
         .hp-val { height: 100%; width: 100%; transition: width 0.2s; }
-        
         .proj { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: white; z-index: 12; transform: translate(-50%,-50%); border: 2px solid black; }
         .proj.mage { background: #a29bfe; box-shadow: 0 0 8px #a29bfe; }
         .proj.cannon { background: #333; width: 16px; height: 16px; }
@@ -97,46 +71,25 @@
         .hud-top { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; pointer-events: none; }
         .energy { background: rgba(0,0,0,0.8); color: var(--gold); padding: 5px 20px; border-radius: 20px; border: 1px solid var(--gold); font-size: 24px; font-weight: bold; display: inline-block; }
         
-        .dock { 
-            position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 5px; z-index: 100; width: 98%; max-width: 650px; justify-content: center;
-        }
-        .card { 
-            flex: 1; height: 65px; background: #222; border: 1px solid #444; border-radius: 10px;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            cursor: pointer; position: relative; transition: 0.1s;
-        }
+        .dock { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 100; width: 98%; max-width: 650px; justify-content: center; }
+        .card { flex: 1; height: 65px; background: #222; border: 1px solid #444; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.1s; }
         .card:active { transform: scale(0.95); border-color: var(--gold); }
         .card.disabled { opacity: 0.4; filter: grayscale(1); }
         .c-icon { font-size: 22px; line-height: 1; }
         .c-cost { font-size: 10px; color: var(--gold); background: black; padding: 1px 5px; border-radius: 8px; margin-top: 2px; }
 
-        #chatCon { 
-            position: absolute; bottom: 90px; left: 10px; width: 280px; height: 160px; z-index: 100; 
-            display: flex; flex-direction: column; pointer-events: none; 
-        }
-        #chatBox { 
-            flex: 1; overflow-y: auto; padding: 8px; color: white; font-size: 13px; pointer-events: auto; 
-            background: rgba(255, 255, 255, 0.15); 
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 8px 8px 0 0;
-            margin-bottom: 2px;
-        }
-        #chatBox div {
-            text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
-        }
-        .chat-input-row {
-            display: flex; width: 100%; pointer-events: auto;
-        }
-        #chatInp { 
-            flex: 1; margin: 0; background: rgba(0,0,0,0.8); padding: 8px; color: white;
-            border-radius: 0 0 0 8px; border: 1px solid #444; width: auto; max-width: none;
-        }
-        #chatSendBtn {
-            width: 60px; background: var(--gold); border: none; border-radius: 0 0 8px 0;
-            font-weight: bold; color: black; cursor: pointer;
-        }
+        #chatCon { position: absolute; bottom: 90px; left: 10px; width: 280px; height: 160px; z-index: 100; display: flex; flex-direction: column; pointer-events: none; }
+        #chatBox { flex: 1; overflow-y: auto; padding: 8px; color: white; font-size: 13px; pointer-events: auto; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px 8px 0 0; margin-bottom: 2px; }
+        #chatBox div { text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; }
+        .chat-input-row { display: flex; width: 100%; pointer-events: auto; }
+        #chatInp { flex: 1; margin: 0; background: rgba(0,0,0,0.8); padding: 8px; color: white; border-radius: 0 0 0 8px; border: 1px solid #444; width: auto; max-width: none; }
+        #chatSendBtn { width: 60px; background: var(--gold); border: none; border-radius: 0 0 8px 0; font-weight: bold; color: black; cursor: pointer; }
         #chatSendBtn:active { background: #e5c100; }
+
+        /* [NEW] Matchmaking UI */
+        #matchScreen { text-align: center; }
+        .loader { width: 50px; height: 50px; border: 5px solid #333; border-top: 5px solid var(--gold); border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -145,20 +98,32 @@
         <h1 style="color:var(--gold); font-size:40px;">BATTLE WAR</h1>
         <p style="color:#777; margin-bottom:20px;">Zoom & Mobile Edition</p>
         <input type="text" id="pName" placeholder="ชื่อตัวละคร" maxlength="10">
+        
+        <button class="btn btn-blue" style="width:80%; max-width:300px; padding:15px; font-size:20px;" onclick="startMatchmaking()">🔍 Auto Match (1v1)</button>
+        
+        <div style="width:80%; height:1px; background:#333; margin:15px 0;"></div>
+        
         <select id="gMode" onchange="toggleBot()">
-            <option value="1v1">1 vs 1</option>
-            <option value="2v2">2 vs 2</option>
+            <option value="1v1">Custom 1 vs 1</option>
+            <option value="2v2">Custom 2 vs 2</option>
             <option value="bot">Play vs Bot</option>
         </select>
         <div id="botOpt" style="display:none; width:100%; text-align:center;">
             <select id="bDiff" style="width:50%;"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select>
         </div>
-        <button class="btn btn-gold" onclick="createRoom()">สร้างห้อง</button>
+        <button class="btn btn-gold" onclick="createRoom()">สร้างห้องเอง</button>
         <div style="display:flex; gap:5px; width:80%; max-width:300px;">
             <input type="text" id="rCode" placeholder="Code" style="margin:0;">
             <button class="btn btn-gray" onclick="joinRoom()" style="margin:0;">Join</button>
         </div>
         <div id="msg" style="color:#ff4757; margin-top:10px;"></div>
+    </div>
+
+    <div id="matchScreen" class="screen">
+        <h2 style="color:white;">กำลังค้นหาคู่ต่อสู้...</h2>
+        <div class="loader"></div>
+        <p style="color:#aaa;">กรุณารอสักครู่ ระบบกำลังจับคู่ให้คุณ</p>
+        <button class="btn btn-gray" onclick="cancelMatch()">ยกเลิก</button>
     </div>
 
     <div id="lobbyScreen" class="screen">
@@ -191,16 +156,13 @@
             <div id="world">
                 <div id="nameL" class="team-name" style="left: 100px;"></div>
                 <div id="nameR" class="team-name" style="right: 100px;"></div>
-
                 <div class="base" style="left:100px; color:#3b82f6;">🏰<div class="hp-bar"><div id="hpL" class="hp-val" style="background:#3b82f6;"></div></div></div>
                 <div class="base" style="right:100px; color:#ef4444;">🏰<div class="hp-bar"><div id="hpR" class="hp-val" style="background:#ef4444;"></div></div></div>
                 <div id="uLayer"></div>
                 <div id="fxLayer"></div>
             </div>
         </div>
-
         <div class="hud-top"><div class="energy">⚡ <span id="eng">0</span></div></div>
-        
         <div id="chatCon">
             <div id="chatBox"></div>
             <div class="chat-input-row">
@@ -208,7 +170,6 @@
                 <button id="chatSendBtn" onclick="sendMsg()">ส่ง</button>
             </div>
         </div>
-
         <div class="dock">
             <div class="card" onclick="spawn('sword',20)"><span class="c-icon">⚔️</span><span class="c-cost">20</span></div>
             <div class="card" onclick="spawn('bow',50)"><span class="c-icon">🏹</span><span class="c-cost">50</span></div>
@@ -232,7 +193,7 @@
         
         socket.on('join_success', d=>{ rid=d.roomId; toScr('lobbyScreen'); });
         socket.on('room_created', d=>{ rid=d.roomId; toScr('lobbyScreen'); });
-        socket.on('error_msg', m=>document.getElementById('msg').innerText=m);
+        socket.on('error_msg', m=>alert(m));
 
         socket.on('update_lobby', d=>{
             document.getElementById('lTitle').innerText = `Room: ${rid}`;
@@ -269,12 +230,23 @@
         function tReady(){ socket.emit('toggle_ready', rid); }
         function toScr(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
 
+        // [NEW] Matchmaking Functions
+        function startMatchmaking() {
+            const name = v('pName') || 'Player';
+            socket.emit('find_match', { name });
+            toScr('matchScreen');
+        }
+        function cancelMatch() {
+            socket.emit('cancel_match');
+            toScr('menuScreen');
+        }
+
         // --- GAME LOGIC ---
         socket.on('start_game', (data)=>{ 
             toScr('gameScreen'); 
             initCamera(); 
 
-            // แสดงรายชื่อคนในแต่ละทีมที่ฐาน
+            // แสดงรายชื่อคนในแต่ละทีม
             const leftNames = data.players.filter(p=>p.side==='left').map(p=>p.name).join(', ');
             const rightNames = data.players.filter(p=>p.side==='right').map(p=>p.name).join(', ');
             document.getElementById('nameL').innerText = leftNames;
@@ -324,8 +296,7 @@
                 }
                 el.style.left = u.x+'px'; el.style.top = u.y+'px';
                 
-                // --- UPDATE CLASS ANIMATION ---
-                // ล้าง Class เก่าก่อน แล้วใส่ใหม่ตาม Action
+                // Update Animation
                 el.classList.remove('walk', 'attack');
                 if(u.act === 'walk') el.classList.add('walk');
                 else if(u.act === 'attack') el.classList.add('attack');
@@ -359,99 +330,38 @@
 
         socket.on('game_over', d=>{ alert(d.winner===mySide?"ชนะ!":"แพ้!"); location.reload(); });
 
-        // --- CAMERA SYSTEM (ZOOM & PAN) ---
+        // --- CAMERA SYSTEM ---
         function initCamera() {
             const vp = document.getElementById('viewport');
             const world = document.getElementById('world');
-            
-            let state = {
-                x: mySide === 'right' ? -(1600 - vp.clientWidth) : 0, 
-                y: -(900 - vp.clientHeight) / 2, 
-                scale: 1, 
-            };
-
-            const MIN_SCALE = 0.5;
-            const MAX_SCALE = 1.5;
-            const WORLD_W = 1600;
-            const WORLD_H = 900;
-
+            let state = { x: mySide === 'right' ? -(1600 - vp.clientWidth) : 0, y: -(900 - vp.clientHeight) / 2, scale: 1 };
+            const MIN_SCALE = 0.5, MAX_SCALE = 1.5, WORLD_W = 1600, WORLD_H = 900;
             function updateTransform() {
                 const minX = vp.clientWidth - (WORLD_W * state.scale);
                 const minY = vp.clientHeight - (WORLD_H * state.scale);
-
-                if (minX > 0) state.x = minX / 2;
-                else state.x = Math.max(minX, Math.min(0, state.x));
-
-                if (minY > 0) state.y = minY / 2;
-                else state.y = Math.max(minY, Math.min(0, state.y));
-
+                if (minX > 0) state.x = minX / 2; else state.x = Math.max(minX, Math.min(0, state.x));
+                if (minY > 0) state.y = minY / 2; else state.y = Math.max(minY, Math.min(0, state.y));
                 world.style.transform = `translate3d(${state.x}px, ${state.y}px, 0) scale(${state.scale})`;
             }
-
-            let lastDist = 0;
-            let startX = 0, startY = 0;
-            let isDragging = false;
-
+            let lastDist = 0, startX = 0, startY = 0, isDragging = false;
             vp.addEventListener('touchstart', (e) => {
-                if(e.touches.length === 1) {
-                    isDragging = true;
-                    startX = e.touches[0].clientX - state.x;
-                    startY = e.touches[0].clientY - state.y;
-                } else if (e.touches.length === 2) {
-                    isDragging = false;
-                    lastDist = Math.hypot(
-                        e.touches[0].clientX - e.touches[1].clientX,
-                        e.touches[0].clientY - e.touches[1].clientY
-                    );
-                }
+                if(e.touches.length === 1) { isDragging = true; startX = e.touches[0].clientX - state.x; startY = e.touches[0].clientY - state.y; } 
+                else if (e.touches.length === 2) { isDragging = false; lastDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }
             }, {passive: false});
-
             vp.addEventListener('touchmove', (e) => {
                 e.preventDefault(); 
-                
-                if (e.touches.length === 1 && isDragging) {
-                    state.x = e.touches[0].clientX - startX;
-                    state.y = e.touches[0].clientY - startY;
-                    updateTransform();
-                } else if (e.touches.length === 2) {
-                    const dist = Math.hypot(
-                        e.touches[0].clientX - e.touches[1].clientX,
-                        e.touches[0].clientY - e.touches[1].clientY
-                    );
-                    
-                    if (lastDist) {
-                        const delta = dist - lastDist;
-                        const newScale = state.scale + (delta * 0.005);
-                        state.scale = Math.min(Math.max(newScale, MIN_SCALE), MAX_SCALE);
-                        updateTransform();
-                    }
+                if (e.touches.length === 1 && isDragging) { state.x = e.touches[0].clientX - startX; state.y = e.touches[0].clientY - startY; updateTransform(); } 
+                else if (e.touches.length === 2) {
+                    const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                    if (lastDist) { const delta = dist - lastDist; const newScale = state.scale + (delta * 0.005); state.scale = Math.min(Math.max(newScale, MIN_SCALE), MAX_SCALE); updateTransform(); }
                     lastDist = dist;
                 }
             }, {passive: false});
-
             vp.addEventListener('touchend', () => { isDragging = false; lastDist = 0; });
-
-            vp.addEventListener('mousedown', (e) => {
-                isDragging = true;
-                startX = e.clientX - state.x;
-                startY = e.clientY - state.y;
-            });
-            window.addEventListener('mousemove', (e) => {
-                if(!isDragging) return;
-                state.x = e.clientX - startX;
-                state.y = e.clientY - startY;
-                updateTransform();
-            });
+            vp.addEventListener('mousedown', (e) => { isDragging = true; startX = e.clientX - state.x; startY = e.clientY - state.y; });
+            window.addEventListener('mousemove', (e) => { if(!isDragging) return; state.x = e.clientX - startX; state.y = e.clientY - startY; updateTransform(); });
             window.addEventListener('mouseup', () => isDragging = false);
-
-            vp.addEventListener('wheel', (e) => {
-                e.preventDefault();
-                const delta = -Math.sign(e.deltaY) * 0.1;
-                const newScale = state.scale + delta;
-                state.scale = Math.min(Math.max(newScale, MIN_SCALE), MAX_SCALE);
-                updateTransform();
-            }, {passive: false});
-
+            vp.addEventListener('wheel', (e) => { e.preventDefault(); const delta = -Math.sign(e.deltaY) * 0.1; const newScale = state.scale + delta; state.scale = Math.min(Math.max(newScale, MIN_SCALE), MAX_SCALE); updateTransform(); }, {passive: false});
             updateTransform();
         }
     </script>
