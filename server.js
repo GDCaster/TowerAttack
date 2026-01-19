@@ -17,14 +17,12 @@ const MAX_ENERGY = 200;
 const SPECS = {
     sword:    { hp: 45,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 800 },
     bow:      { hp: 25,  dmg: 4,  range: 300, speed: 2.5, size: 30, cost: 50, atkRate: 1200 },
-    // [EDIT] Tank ความเร็วเท่า Sword (2.5)
     tank:     { hp: 140, dmg: 3,  range: 50,  speed: 2.5, size: 36, cost: 70, atkRate: 1200 },
     mage:     { hp: 30,  dmg: 9,  range: 250, speed: 1.8, size: 30, cost: 100, atkRate: 1500, type:'aoe', radius: 40 },
-    // [EDIT] Assassin ดาเมจปกติ 10, มีท่าพิเศษ (Jump -> Slash)
     assassin: { hp: 30,  dmg: 10, range: 80,  speed: 4.5, size: 25, cost: 75, atkRate: 600, special: 'jump', type: 'hybrid', radius: 50 },
     cannon:   { hp: 70,  dmg: 18, range: 350, speed: 1.5, size: 40, cost: 175, atkRate: 2500, type:'aoe', radius: 60 },
-    // [NEW] Healer ฮีลเลือด 5 ทุก 2.5 วิ
-    healer:   { hp: 40,  dmg: 0,  range: 0,   speed: 2.0, size: 28, cost: 50, atkRate: 2500, type: 'support', radius: 150 }
+    // [EDIT] ปรับ range เป็น 150 เพื่อให้หยุดก่อนถึงป้อม (เท่ากับ radius)
+    healer:   { hp: 40,  dmg: 0,  range: 150, speed: 2.0, size: 28, cost: 50, atkRate: 2500, type: 'support', radius: 150 }
 };
 
 const BOT_SETTINGS = {
@@ -50,7 +48,7 @@ setInterval(() => {
             continue;
         }
         
-        // จัดการนับถอยหลัง Auto Match
+        // Auto Match Timer
         if (room.autoStartTimer && room.status === 'waiting') {
             const timeLeft = Math.ceil((room.autoStartTime - Date.now()) / 1000);
             if (timeLeft <= 0) {
@@ -104,36 +102,56 @@ function updateGame(room) {
     room.units.forEach(u => {
         u.action = 'idle';
 
-        // --- [NEW] HEALER LOGIC ---
+        // --- [UPDATED] HEALER LOGIC ---
         if (u.type === 'healer') {
-            const dir = u.side === 'left' ? 1 : -1;
-            u.x += dir * u.speed;
-            u.action = 'walk';
-            
-            if (now - u.lastAttack > SPECS.healer.atkRate) {
-                u.lastAttack = now;
-                let healed = false;
-                room.units.forEach(friend => {
-                    if (friend.side === u.side && !friend.dead && friend.id !== u.id) {
-                        const dist = Math.hypot(u.x - friend.x, u.y - friend.y);
-                        if (dist <= SPECS.healer.radius && friend.hp < SPECS[friend.type].hp) {
-                            friend.hp += 5; // ฮีล 5 หน่วย
-                            if (friend.hp > SPECS[friend.type].hp) friend.hp = SPECS[friend.type].hp;
-                            room.effects.push({ type: 'heal', x: friend.x, y: friend.y, val: 5 });
-                            healed = true;
-                        }
-                    }
-                });
-                if (healed) {
-                     room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.healer.radius, t: 'healer' });
+            // 1. หาเพื่อนที่บาดเจ็บในระยะ (เพื่อตัดสินใจว่าจะหยุดเดินไหม)
+            const friendsToHeal = room.units.filter(friend => 
+                friend.side === u.side && 
+                !friend.dead && 
+                friend.id !== u.id &&
+                Math.hypot(u.x - friend.x, u.y - friend.y) <= SPECS.healer.radius &&
+                friend.hp < SPECS[friend.type].hp // เลือดไม่เต็ม
+            );
+
+            // 2. เช็คระยะห่างจากป้อมศัตรู
+            const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
+            const distToBase = Math.abs(u.x - enemyBaseX);
+            const atBaseLimit = distToBase <= SPECS.healer.range; // ใช้ range 150 เป็นระยะหยุด
+
+            // เงื่อนไขหยุดเดิน: มีคนให้ฮีล หรือ ถึงระยะป้อมแล้ว
+            if (friendsToHeal.length > 0 || atBaseLimit) {
+                u.action = 'idle'; // หยุดเดิน
+                
+                // ถ้ามีคนให้ฮีล และ Cooldown พร้อม -> ฮีลเลย
+                if (friendsToHeal.length > 0 && now - u.lastAttack > SPECS.healer.atkRate) {
+                    u.lastAttack = now;
+                    // u.action = 'attack'; // (Optional) ใส่ท่าทางโจมตีถ้าต้องการ
+                    
+                    friendsToHeal.forEach(f => {
+                        f.hp += 5;
+                        if (f.hp > SPECS[f.type].hp) f.hp = SPECS[f.type].hp;
+                        room.effects.push({ type: 'heal', x: f.x, y: f.y, val: 5 });
+                    });
+                    
+                    // Effect วงฮีล
+                    room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.healer.radius, t: 'healer' });
                 }
+            } else {
+                // ไม่มีใครให้ฮีล และยังไม่ถึงป้อม -> เดินต่อ
+                const dir = u.side === 'left' ? 1 : -1;
+                u.x += dir * u.speed;
+                u.action = 'walk';
             }
+
+            // จัดตำแหน่งแกน Y ไม่ให้ทับกัน (เหมือนเดิม)
             const mid = WORLD_H / 2;
             if (u.y < mid - 100) u.y += 0.5;
             if (u.y > mid + 100) u.y -= 0.5;
+            
             return; // จบ Logic Healer
         }
 
+        // --- ATTACKER LOGIC (ตัวอื่นๆ) ---
         let target = null;
         let minDist = 999;
 
@@ -151,7 +169,7 @@ function updateGame(room) {
             u.x = target.x + offset;
             u.y = target.y;
             u.hasJumped = true;
-            u.slashDone = false; // Reset สถานะการตวัด
+            u.slashDone = false;
             room.effects.push({ type: 'warp', x: u.x, y: u.y });
         }
 
@@ -177,10 +195,8 @@ function updateGame(room) {
                 if (u.type === 'mage' || u.type === 'cannon') {
                     spawnProjectile(room, u, target);
                 } 
-                // [ASSASSIN] Slash Logic
                 else if (u.type === 'assassin') {
                     if (!u.slashDone) {
-                        // ท่าตวัด (AOE Damage 15)
                         const slashDmg = 15;
                         room.units.forEach(enemy => {
                             if(enemy.side !== u.side && !enemy.dead) {
@@ -195,13 +211,11 @@ function updateGame(room) {
                         room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.assassin.radius, t: 'assassin' });
                         u.slashDone = true; 
                     } else {
-                        // โจมตีปกติ (Single Target Damage 10)
                         target.hp -= u.dmg;
                         room.effects.push({ type: 'dmg', x: target.x, y: target.y, val: u.dmg });
                         if (target.hp <= 0) target.dead = true;
                     }
                 }
-                // Normal Melee
                 else {
                     target.hp -= u.dmg;
                     room.effects.push({ type: 'dmg', x: target.x, y: target.y, val: u.dmg });
@@ -273,7 +287,9 @@ function spawnUnit(room, player, type) {
     if (player.energy < SPECS[type].cost) return;
     player.energy -= SPECS[type].cost;
     const batchId = Date.now() + Math.random();
-    for (let i = 0; i < 5; i++) {
+    // ถ้าเป็น Healer หรืออื่นๆ ก็จำนวนตามนี้
+    const count = 5; 
+    for (let i = 0; i < count; i++) {
         room.units.push({
             id: `${batchId}_${i}`,
             type, side: player.side, color: player.color, owner: player.name,
