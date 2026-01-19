@@ -17,11 +17,11 @@ const MAX_ENERGY = 200;
 // Update Specs
 const SPECS = {
     sword:    { hp: 40,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 800 },
-    bow:      { hp: 20,  dmg: 4,  range: 300, speed: 2.5, size: 30, cost: 50, atkRate: 900 }, // ปรับราคาเป็น 50
+    bow:      { hp: 20,  dmg: 4,  range: 300, speed: 2.5, size: 30, cost: 50, atkRate: 1200 }, // ปรับราคาเป็น 50
     tank:     { hp: 120, dmg: 2,  range: 50,  speed: 1.2, size: 36, cost: 70, atkRate: 1200 },
     mage:     { hp: 30,  dmg: 12, range: 250, speed: 1.8, size: 30, cost: 100, atkRate: 1500, type:'aoe', radius: 60 }, // Buff AoE
     assassin: { hp: 25,  dmg: 8,  range: 40,  speed: 4.0, size: 25, cost: 50, atkRate: 600, special: 'jump' }, // ตัวล้วง
-    cannon:   { hp: 60,  dmg: 25, range: 400, speed: 1.5, size: 40, cost: 100, atkRate: 2000, type:'aoe', radius: 100 } // ปืนใหญ่ AoE
+    cannon:   { hp: 60,  dmg: 20, range: 400, speed: 1.5, size: 40, cost: 100, atkRate: 2000, type:'aoe', radius: 100 } // ปืนใหญ่ AoE
 };
 
 const BOT_SETTINGS = {
