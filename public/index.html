@@ -14,6 +14,18 @@
         @keyframes popIn { 0% { transform: translate(-50%,-50%) scale(0); } 80% { transform: translate(-50%,-50%) scale(1.2); } 100% { transform: translate(-50%,-50%) scale(1); } }
         @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
         @keyframes expand { 0% { transform: translate(-50%,-50%) scale(0); opacity: 0.8; } 100% { transform: translate(-50%,-50%) scale(2); opacity: 0; } }
+        
+        /* --- เพิ่ม Animation การเดินและการโจมตี --- */
+        @keyframes walkAnim { 
+            0% { transform: translate(-50%,-50%) rotate(-5deg); } 
+            50% { transform: translate(-50%,-50%) rotate(5deg); } 
+            100% { transform: translate(-50%,-50%) rotate(-5deg); } 
+        }
+        @keyframes atkAnim { 
+            0% { transform: translate(-50%,-50%) scale(1); } 
+            50% { transform: translate(-50%,-50%) scale(1.4); } 
+            100% { transform: translate(-50%,-50%) scale(1); } 
+        }
 
         .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 50; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
         .active { display: flex !important; }
@@ -50,7 +62,6 @@
             will-change: transform;
         }
         
-        /* Base & Name Styles */
         .base { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; text-align: center; font-size: 50px; }
         .team-name {
             position: absolute; top: 40%; transform: translate(-50%, -50%);
@@ -58,13 +69,16 @@
             z-index: 4; text-shadow: 1px 1px 0 #000;
         }
         
-        /* Unit & Owner Name */
         .unit { 
             position: absolute; width: 30px; height: 30px; border-radius: 50%; 
             transform: translate(-50%, -50%); z-index: 10; display: flex; 
             justify-content: center; align-items: center; border: 2px solid white;
             font-size: 16px; transition: left 0.05s linear, top 0.05s linear;
         }
+        /* --- Class สำหรับสั่งเล่น Animation --- */
+        .unit.walk { animation: walkAnim 0.5s infinite linear; }
+        .unit.attack { animation: atkAnim 0.2s linear; }
+
         .u-name {
             position: absolute; top: -16px; left: 50%; transform: translateX(-50%);
             font-size: 10px; color: white; white-space: nowrap; font-weight: bold;
@@ -305,11 +319,16 @@
                     el = document.createElement('div'); el.id=u.i; el.className='unit';
                     el.style.background=u.c; el.style.borderColor=u.c;
                     el.style.boxShadow=`0 0 5px ${u.c}`;
-                    // แสดงชื่อคนเรียกบนหัวทหาร
                     el.innerHTML = `<div class="u-name">${u.n}</div>${ICONS[u.t]}`;
                     uL.appendChild(el);
                 }
                 el.style.left = u.x+'px'; el.style.top = u.y+'px';
+                
+                // --- UPDATE CLASS ANIMATION ---
+                // ล้าง Class เก่าก่อน แล้วใส่ใหม่ตาม Action
+                el.classList.remove('walk', 'attack');
+                if(u.act === 'walk') el.classList.add('walk');
+                else if(u.act === 'attack') el.classList.add('attack');
             });
             Array.from(uL.children).forEach(e=>{ if(!exist.has(e.id)) e.remove(); });
 
