@@ -20,7 +20,7 @@ const SPECS = {
     tank:     { hp: 140, dmg: 3,  range: 50,  speed: 2.5, size: 36, cost: 70, atkRate: 1200 },
     mage:     { hp: 30,  dmg: 9,  range: 250, speed: 1.8, size: 30, cost: 100, atkRate: 1500, type:'aoe', radius: 40 },
     assassin: { hp: 30,  dmg: 10, range: 80,  speed: 4.5, size: 25, cost: 75, atkRate: 600, special: 'jump', type: 'hybrid', radius: 50 },
-    cannon:   { hp: 70,  dmg: 18, range: 350, speed: 1.5, size: 40, cost: 175, atkRate: 2500, type:'aoe', radius: 60 },
+    cannon:   { hp: 70,  dmg: 18, range: 350, speed: 1.5, size: 40, cost: 175, atkRate: 5000, type:'aoe', radius: 60 },
     // [EDIT] ปรับ range เป็น 150 เพื่อให้หยุดก่อนถึงป้อม (เท่ากับ radius)
     healer:   { hp: 40,  dmg: 0,  range: 150, speed: 2.0, size: 28, cost: 50, atkRate: 2500, type: 'support', radius: 150 }
 };
