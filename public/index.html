@@ -36,7 +36,6 @@
         .color-dot.selected { border-color: white; transform: scale(1.1); }
         .color-dot.disabled { opacity: 0.2; pointer-events: none; }
         
-        /* [NEW] Countdown Timer in Lobby */
         #autoTimer { color: #ff4757; font-size: 18px; font-weight: bold; margin-bottom: 5px; display: none; text-align: center; }
 
         #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 1; background: #111; touch-action: none; }
@@ -66,8 +65,14 @@
         .proj { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: white; z-index: 12; transform: translate(-50%,-50%); border: 2px solid black; }
         .proj.mage { background: #a29bfe; box-shadow: 0 0 8px #a29bfe; }
         .proj.cannon { background: #333; width: 16px; height: 16px; }
+        
         .aoe { position: absolute; border: 2px solid white; background: rgba(255,255,255,0.2); border-radius: 50%; z-index: 11; animation: expand 0.4s forwards; }
+        /* [NEW] Style for Healer AOE */
+        .aoe.healer { border-color: #2ed573; background: rgba(46, 213, 115, 0.2); }
+
         .dmg { position: absolute; color: #ff4757; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
+        /* [NEW] Style for Heal Text */
+        .heal-text { position: absolute; color: #2ed573; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
 
         .hud-top { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; pointer-events: none; }
         .energy { background: rgba(0,0,0,0.8); color: var(--gold); padding: 5px 20px; border-radius: 20px; border: 1px solid var(--gold); font-size: 24px; font-weight: bold; display: inline-block; }
@@ -178,6 +183,7 @@
             <div class="card" onclick="spawn('bow',50)"><span class="c-icon">🏹</span><span class="c-cost">50</span></div>
             <div class="card" onclick="spawn('assassin',75)"><span class="c-icon">🥷</span><span class="c-cost">75</span></div>
             <div class="card" onclick="spawn('tank',70)"><span class="c-icon">🛡️</span><span class="c-cost">70</span></div>
+            <div class="card" onclick="spawn('healer',50)"><span class="c-icon">⚕️</span><span class="c-cost">50</span></div>
             <div class="card" onclick="spawn('mage',100)"><span class="c-icon">🔮</span><span class="c-cost">100</span></div>
             <div class="card" onclick="spawn('cannon',175)"><span class="c-icon">💣</span><span class="c-cost">175</span></div>
         </div>
@@ -187,7 +193,8 @@
         const socket = io();
         let rid=null, mySide=null, eng=0;
         let timerInterval = null;
-        const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣' };
+        // [NEW] Added healer icon
+        const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️' };
 
         // --- MENU & LOBBY ---
         function toggleBot(){ document.getElementById('botOpt').style.display = document.getElementById('gMode').value==='bot'?'block':'none'; }
@@ -199,7 +206,6 @@
             rid=d.roomId; 
             toScr('lobbyScreen'); 
             
-            // ถ้าเป็น Auto Match ให้แสดง Timer
             if(d.isAuto) {
                 document.getElementById('autoTimer').style.display = 'block';
             } else {
@@ -207,7 +213,6 @@
             }
         });
 
-        // รับค่า Timer จาก Server
         socket.on('auto_match_timer', d=>{
             let sec = d.seconds;
             const el = document.getElementById('timerNum');
@@ -341,11 +346,20 @@
                     const e=document.createElement('div'); e.className='dmg'; e.innerText=`-${f.val}`;
                     e.style.left=f.x+'px'; e.style.top=(f.y-20)+'px';
                     fxL.appendChild(e); setTimeout(()=>e.remove(),800);
-                } else if(f.type==='aoe'){
+                } 
+                // [NEW] Heal Text Effect
+                else if(f.type==='heal'){
+                    const e=document.createElement('div'); e.className='heal-text'; e.innerText=`+${f.val}`;
+                    e.style.left=f.x+'px'; e.style.top=(f.y-30)+'px';
+                    fxL.appendChild(e); setTimeout(()=>e.remove(),800);
+                }
+                else if(f.type==='aoe'){
                     const e=document.createElement('div'); e.className='aoe'; 
+                    // [NEW] Healer Green AOE
+                    if(f.t === 'healer') e.classList.add('healer');
+                    
                     e.style.left=f.x+'px'; e.style.top=f.y+'px';
                     e.style.width=(f.r*2)+'px'; e.style.height=(f.r*2)+'px';
-                    // ถ้าเป็น assassin ให้ effect สีต่างหน่อยก็ได้ (ใน CSS ใช้ขาวเหมือนกัน)
                     if(f.t === 'assassin') e.style.borderColor = '#ff4757'; 
                     fxL.appendChild(e); setTimeout(()=>e.remove(),400);
                 } else if(f.type==='warp'){

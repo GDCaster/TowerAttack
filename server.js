@@ -17,13 +17,14 @@ const MAX_ENERGY = 200;
 const SPECS = {
     sword:    { hp: 45,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 800 },
     bow:      { hp: 25,  dmg: 4,  range: 300, speed: 2.5, size: 30, cost: 50, atkRate: 1200 },
-    tank:     { hp: 140, dmg: 3,  range: 50,  speed: 1.2, size: 36, cost: 70, atkRate: 1200 },
-    // [NERF] Mage ลดดาเมจลง (12 -> 9)
-    mage:     { hp: 30,  dmg: 9, range: 250, speed: 1.8, size: 30, cost: 100, atkRate: 1500, type:'aoe', radius: 40 },
-    // [BUFF/REWORK] Assassin ราคา 75, ตีแรงขึ้น, ระยะตีไกลขึ้นนิดหน่อย(80) เพื่อตวัด, มี radius สำหรับตวัด
-    assassin: { hp: 30,  dmg: 20, range: 80,  speed: 4.5, size: 25, cost: 75, atkRate: 600, special: 'jump', type: 'melee-aoe', radius: 50 },
-    // [NERF] Cannon ลดดาเมจ (25 -> 18) และลดระยะ (450 -> 350)
-    cannon:   { hp: 70,  dmg: 18, range: 350, speed: 1.5, size: 40, cost: 175, atkRate: 2500, type:'aoe', radius: 60 }
+    // [EDIT] Tank ความเร็วเท่า Sword (2.5)
+    tank:     { hp: 140, dmg: 3,  range: 50,  speed: 2.5, size: 36, cost: 70, atkRate: 1200 },
+    mage:     { hp: 30,  dmg: 9,  range: 250, speed: 1.8, size: 30, cost: 100, atkRate: 1500, type:'aoe', radius: 40 },
+    // [EDIT] Assassin ดาเมจปกติ 10, มีท่าพิเศษ (Jump -> Slash)
+    assassin: { hp: 30,  dmg: 10, range: 80,  speed: 4.5, size: 25, cost: 75, atkRate: 600, special: 'jump', type: 'hybrid', radius: 50 },
+    cannon:   { hp: 70,  dmg: 18, range: 350, speed: 1.5, size: 40, cost: 175, atkRate: 2500, type:'aoe', radius: 60 },
+    // [NEW] Healer ฮีลเลือด 5 ทุก 2.5 วิ
+    healer:   { hp: 40,  dmg: 0,  range: 0,   speed: 2.0, size: 28, cost: 50, atkRate: 2500, type: 'support', radius: 150 }
 };
 
 const BOT_SETTINGS = {
@@ -53,7 +54,6 @@ setInterval(() => {
         if (room.autoStartTimer && room.status === 'waiting') {
             const timeLeft = Math.ceil((room.autoStartTime - Date.now()) / 1000);
             if (timeLeft <= 0) {
-                // หมดเวลาบังคับเริ่ม
                 forceStartGame(roomId);
             }
         }
@@ -103,6 +103,37 @@ function updateGame(room) {
     // Unit Logic
     room.units.forEach(u => {
         u.action = 'idle';
+
+        // --- [NEW] HEALER LOGIC ---
+        if (u.type === 'healer') {
+            const dir = u.side === 'left' ? 1 : -1;
+            u.x += dir * u.speed;
+            u.action = 'walk';
+            
+            if (now - u.lastAttack > SPECS.healer.atkRate) {
+                u.lastAttack = now;
+                let healed = false;
+                room.units.forEach(friend => {
+                    if (friend.side === u.side && !friend.dead && friend.id !== u.id) {
+                        const dist = Math.hypot(u.x - friend.x, u.y - friend.y);
+                        if (dist <= SPECS.healer.radius && friend.hp < SPECS[friend.type].hp) {
+                            friend.hp += 5; // ฮีล 5 หน่วย
+                            if (friend.hp > SPECS[friend.type].hp) friend.hp = SPECS[friend.type].hp;
+                            room.effects.push({ type: 'heal', x: friend.x, y: friend.y, val: 5 });
+                            healed = true;
+                        }
+                    }
+                });
+                if (healed) {
+                     room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.healer.radius, t: 'healer' });
+                }
+            }
+            const mid = WORLD_H / 2;
+            if (u.y < mid - 100) u.y += 0.5;
+            if (u.y > mid + 100) u.y -= 0.5;
+            return; // จบ Logic Healer
+        }
+
         let target = null;
         let minDist = 999;
 
@@ -114,13 +145,13 @@ function updateGame(room) {
             }
         });
 
-        // [ASSASSIN] Warp Logic Update: วาร์ปใส่ใครก็ได้
+        // [ASSASSIN] Warp Logic
         if (u.type === 'assassin' && target && !u.hasJumped && minDist < 350) {
-            // ไม่เช็ค type เป้าหมายแล้ว วาร์ปใส่ได้หมด
-            const offset = u.side === 'left' ? 40 : -40; // วาร์ปไปด้านหลัง
+            const offset = u.side === 'left' ? 40 : -40;
             u.x = target.x + offset;
             u.y = target.y;
             u.hasJumped = true;
+            u.slashDone = false; // Reset สถานะการตวัด
             room.effects.push({ type: 'warp', x: u.x, y: u.y });
         }
 
@@ -146,21 +177,29 @@ function updateGame(room) {
                 if (u.type === 'mage' || u.type === 'cannon') {
                     spawnProjectile(room, u, target);
                 } 
-                // [ASSASSIN] Melee AOE (ตวัด)
+                // [ASSASSIN] Slash Logic
                 else if (u.type === 'assassin') {
-                    // ตีศัตรูทุกตัวในระยะ radius รอบตัว assassin
-                    room.units.forEach(enemy => {
-                        if(enemy.side !== u.side && !enemy.dead) {
-                            const d = Math.hypot(u.x - enemy.x, u.y - enemy.y);
-                            if(d <= SPECS.assassin.radius) {
-                                enemy.hp -= u.dmg;
-                                room.effects.push({ type: 'dmg', x: enemy.x, y: enemy.y, val: u.dmg });
-                                if (enemy.hp <= 0) enemy.dead = true;
+                    if (!u.slashDone) {
+                        // ท่าตวัด (AOE Damage 15)
+                        const slashDmg = 15;
+                        room.units.forEach(enemy => {
+                            if(enemy.side !== u.side && !enemy.dead) {
+                                const d = Math.hypot(u.x - enemy.x, u.y - enemy.y);
+                                if(d <= SPECS.assassin.radius) {
+                                    enemy.hp -= slashDmg;
+                                    room.effects.push({ type: 'dmg', x: enemy.x, y: enemy.y, val: slashDmg });
+                                    if (enemy.hp <= 0) enemy.dead = true;
+                                }
                             }
-                        }
-                    });
-                    // สร้าง Effect ตวัด (AOE visual)
-                    room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.assassin.radius, t: 'assassin' });
+                        });
+                        room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.assassin.radius, t: 'assassin' });
+                        u.slashDone = true; 
+                    } else {
+                        // โจมตีปกติ (Single Target Damage 10)
+                        target.hp -= u.dmg;
+                        room.effects.push({ type: 'dmg', x: target.x, y: target.y, val: u.dmg });
+                        if (target.hp <= 0) target.dead = true;
+                    }
                 }
                 // Normal Melee
                 else {
@@ -242,7 +281,8 @@ function spawnUnit(room, player, type) {
             y: (WORLD_H / 2) + (Math.random() * 200 - 100),
             hp: SPECS[type].hp, dmg: SPECS[type].dmg,
             range: SPECS[type].range, speed: SPECS[type].speed,
-            lastAttack: 0, dead: false, action: 'idle', hasJumped: false
+            lastAttack: 0, dead: false, action: 'idle', 
+            hasJumped: false, slashDone: false
         });
     }
 }
@@ -262,7 +302,6 @@ function forceStartGame(roomId) {
     }
 }
 
-// [UPDATED] Matchmaking: ส่งไป Lobby แทนการเริ่มเกมเลย
 function checkMatchQueue() {
     if (matchQueue.length >= 2) {
         const p1 = matchQueue.shift();
@@ -276,12 +315,11 @@ function checkMatchQueue() {
             units: [], projectiles: [], effects: [],
             players: [],
             isAutoMatch: true,
-            autoStartTime: Date.now() + 30000, // 30 วินาทีจากนี้
+            autoStartTime: Date.now() + 30000, 
             autoStartTimer: true
         };
 
         const r = rooms[roomId];
-        // ยังไม่ Ready ต้องกดเอง หรือรอเวลา
         r.players.push({ id: p1.id, name: p1.name, side: 'left', ready: false, color: COLORS[0], energy: 0, isBot: false });
         r.players.push({ id: p2.id, name: p2.name, side: 'right', ready: false, color: COLORS[1], energy: 0, isBot: false });
 
@@ -291,7 +329,6 @@ function checkMatchQueue() {
         if (p1Socket) { p1Socket.join(roomId); p1Socket.emit('join_success', { roomId, isAuto: true }); }
         if (p2Socket) { p2Socket.join(roomId); p2Socket.emit('join_success', { roomId, isAuto: true }); }
         
-        // แจ้งเตือนเวลาเริ่ม
         io.to(roomId).emit('auto_match_timer', { seconds: 30 });
         updateLobby(roomId);
     }
@@ -340,7 +377,6 @@ io.on('connection', (socket) => {
     socket.on('select_side', (d) => {
         const r = rooms[d.roomId];
         if(!r) return;
-        // ถ้าเป็น Auto Match ห้ามเปลี่ยนฝั่ง (ล็อคไว้)
         if(r.isAutoMatch) return; 
 
         const p = r.players.find(x => x.id === socket.id);
@@ -366,12 +402,11 @@ io.on('connection', (socket) => {
         if(p) p.ready = !p.ready;
         updateLobby(rid);
         
-        // เช็คว่าเริ่มเกมได้หรือยัง
         const hasL = r.players.some(x=>x.side==='left');
         const hasR = r.players.some(x=>x.side==='right');
         if (r.players.length >= 2 && r.players.every(x => x.ready && x.side) && hasL && hasR) {
             r.status = 'playing';
-            r.autoStartTimer = null; // ยกเลิกตัวนับถอยหลังถ้าทุกคนพร้อม
+            r.autoStartTimer = null; 
             io.to(rid).emit('start_game', { players: r.players });
         }
     });
