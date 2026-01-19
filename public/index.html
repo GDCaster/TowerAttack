@@ -3,164 +3,141 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Battle War: Ultimate Update</title>
+    <title>Battle War: Mobile Zoom</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        :root { --bg: #111; --gold: #FFD700; --red: #ff4757; --blue: #2ed573; }
+        :root { --bg: #0a0a0a; --gold: #FFD700; }
         * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
         body { background: var(--bg); color: white; font-family: 'Kanit', sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
         
-        /* Animation */
         @keyframes popIn { 0% { transform: translate(-50%,-50%) scale(0); } 80% { transform: translate(-50%,-50%) scale(1.2); } 100% { transform: translate(-50%,-50%) scale(1); } }
-        @keyframes floatUp { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-50px); opacity: 0; } }
-        @keyframes walkAnim { 0% { transform: translate(-50%,-50%) rotate(-5deg); } 50% { transform: translate(-50%,-50%) rotate(5deg); } 100% { transform: translate(-50%,-50%) rotate(-5deg); } }
-        @keyframes aoeExpand { 0% { transform: translate(-50%,-50%) scale(0); opacity: 0.8; } 100% { transform: translate(-50%,-50%) scale(1.5); opacity: 0; } }
+        @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
+        @keyframes expand { 0% { transform: translate(-50%,-50%) scale(0); opacity: 0.8; } 100% { transform: translate(-50%,-50%) scale(2); opacity: 0; } }
 
-        .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 20; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
+        .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 50; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
         .active { display: flex !important; }
         
-        input, select { padding: 12px; border-radius: 10px; border: 1px solid #444; background: #222; color: white; font-size: 1.1rem; width: 80%; max-width: 300px; margin: 5px; text-align: center; }
-        .btn { padding: 12px 30px; border-radius: 50px; border: none; font-weight: bold; font-size: 1.1rem; margin: 10px; transition: 0.2s; box-shadow: 0 4px 0 rgba(0,0,0,0.5); cursor: pointer; }
-        .btn:active { transform: translateY(4px); box-shadow: none; }
+        /* UI Elements */
+        input, select { padding: 12px; border-radius: 8px; border: 1px solid #333; background: #222; color: white; margin: 5px; width: 80%; max-width: 300px; text-align: center; font-size: 16px; }
+        .btn { padding: 12px 25px; border-radius: 25px; border: none; font-weight: bold; margin: 10px; cursor: pointer; font-size: 16px; }
         .btn-gold { background: var(--gold); color: black; }
-        .btn-gray { background: #444; color: #ccc; }
+        .btn-gray { background: #333; color: #ccc; }
 
-        /* LOBBY */
-        .lobby-box { width: 95%; max-width: 800px; background: #1a1a1a; padding: 20px; border-radius: 20px; border: 1px solid #333; }
-        .team-container { display: flex; gap: 10px; margin-top: 15px; min-height: 200px; }
-        .team-col { flex: 1; background: rgba(0,0,0,0.3); border: 2px dashed #444; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; align-items: center; }
-        .player-card { width: 100%; background: #333; padding: 10px; border-radius: 8px; margin-bottom: 5px; font-size: 0.9rem; display: flex; justify-content: space-between; border-left: 6px solid #fff; }
-        
-        .color-palette { display: flex; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; justify-content: center; }
-        .color-dot { width: 30px; height: 30px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: 0.2s; }
-        .color-dot:hover { transform: scale(1.1); }
-        .color-dot.selected { border-color: white; transform: scale(1.2); }
+        /* Lobby */
+        .lobby-box { width: 90%; max-width: 600px; background: #151515; padding: 20px; border-radius: 15px; border: 1px solid #333; max-height: 90vh; overflow-y: auto; }
+        .team-con { display: flex; gap: 10px; margin-top: 15px; min-height: 150px; }
+        .team-col { flex: 1; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 10px; }
+        .p-card { background: #333; padding: 8px; border-radius: 5px; margin-bottom: 5px; display: flex; justify-content: space-between; font-size: 14px; border-left: 4px solid white; }
+        .color-dot { width: 30px; height: 30px; border-radius: 50%; display: inline-block; margin: 3px; cursor: pointer; border: 2px solid transparent; }
+        .color-dot.selected { border-color: white; transform: scale(1.1); }
         .color-dot.disabled { opacity: 0.2; pointer-events: none; }
 
-        /* GAME UI */
-        #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 1; background: #050505; }
-        #world { position: absolute; top: 0; left: 0; width: 1600px; height: 900px; background: radial-gradient(#1a1a1a 10%, #000 90%); border: 5px solid #333; }
+        /* GAME VIEWPORT & WORLD */
+        #viewport { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            overflow: hidden; z-index: 1; background: #111; 
+            touch-action: none; /* สำคัญมากสำหรับ Mobile gesture */
+        }
         
-        .base { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; text-align: center; font-size: 4rem; filter: drop-shadow(0 0 15px rgba(0,0,0,0.5)); }
-        .hp-bar-con { width: 100px; height: 8px; background: #333; border: 1px solid #555; margin-top: 5px; border-radius: 4px; position: relative; left: 50%; transform: translateX(-50%); overflow: hidden; }
-        .hp-fill { height: 100%; width: 100%; transition: width 0.3s; }
-        .team-names { font-size: 1rem; color: #aaa; margin-bottom: 5px; text-shadow: 1px 1px 0 #000; font-weight: bold; white-space: nowrap; }
-
+        #world { 
+            position: absolute; top: 0; left: 0; 
+            width: 1600px; height: 900px; 
+            /* พื้นหลังแบบ Grid สำหรับมือถือ ให้กะระยะง่าย */
+            background-color: #0f0f0f;
+            background-image: 
+                linear-gradient(#222 1px, transparent 1px),
+                linear-gradient(90deg, #222 1px, transparent 1px);
+            background-size: 100px 100px; /* ตารางขนาด 100px */
+            border: 2px solid #444;
+            transform-origin: 0 0; /* จุดหมุนซูมเริ่มจากมุมซ้ายบน */
+            will-change: transform;
+        }
+        
+        /* Game Objects */
+        .base { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; text-align: center; font-size: 50px; }
         .unit { 
             position: absolute; width: 30px; height: 30px; border-radius: 50%; 
-            transform: translate(-50%, -50%); z-index: 10; 
-            display: flex; justify-content: center; align-items: center; 
-            font-size: 16px; border: 2px solid white;
-            transition: left 0.05s linear, top 0.05s linear; 
-            animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform: translate(-50%, -50%); z-index: 10; display: flex; 
+            justify-content: center; align-items: center; border: 2px solid white;
+            font-size: 16px; transition: left 0.05s linear, top 0.05s linear;
         }
-        .unit.walk { animation: walkAnim 0.5s infinite linear; }
+        .hp-bar { width: 80px; height: 6px; background: #333; margin: 0 auto; border-radius: 3px; overflow: hidden; }
+        .hp-val { height: 100%; width: 100%; transition: width 0.2s; }
         
-        .proj {
-            position: absolute; width: 12px; height: 12px; border-radius: 50%;
-            background: black; border: 2px solid white; z-index: 15;
-            transform: translate(-50%, -50%);
-        }
-        .proj.mage { background: #a29bfe; box-shadow: 0 0 10px #a29bfe; }
-        .proj.cannon { width: 16px; height: 16px; background: #333; }
+        /* Effects */
+        .proj { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: white; z-index: 12; transform: translate(-50%,-50%); border: 2px solid black; }
+        .proj.mage { background: #a29bfe; box-shadow: 0 0 8px #a29bfe; }
+        .proj.cannon { background: #333; width: 16px; height: 16px; }
+        .aoe { position: absolute; border: 2px solid white; background: rgba(255,255,255,0.2); border-radius: 50%; z-index: 11; animation: expand 0.4s forwards; }
+        .dmg { position: absolute; color: #ff4757; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
 
-        .aoe-fx {
-            position: absolute; border-radius: 50%; border: 2px solid white;
-            background: rgba(255,255,255,0.3); z-index: 12;
-            animation: aoeExpand 0.4s forwards;
-        }
-
-        .dmg-text {
-            position: absolute; color: #ff4757; font-weight: bold; font-size: 1.2rem;
-            text-shadow: 0 0 2px black; pointer-events: none; z-index: 20;
-            animation: floatUp 0.8s forwards;
-        }
-
-        .hud-top { position: absolute; top: 10px; width: 100%; text-align: center; pointer-events: none; z-index: 30; }
-        .energy-badge { display: inline-block; background: rgba(0,0,0,0.8); border: 2px solid var(--gold); color: var(--gold); padding: 5px 20px; border-radius: 30px; font-size: 1.5rem; font-weight: bold; }
+        /* HUD - Fixed on Screen */
+        .hud-top { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; pointer-events: none; }
+        .energy { background: rgba(0,0,0,0.8); color: var(--gold); padding: 5px 20px; border-radius: 20px; border: 1px solid var(--gold); font-size: 24px; font-weight: bold; display: inline-block; }
         
-        .dock {
+        .dock { 
             position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 8px; z-index: 30; width: 95%; max-width: 600px;
-            justify-content: center;
+            display: flex; gap: 5px; z-index: 100; width: 98%; max-width: 650px; justify-content: center;
         }
-        .card {
-            flex: 1; height: 70px; background: #222; border: 2px solid #444; border-radius: 12px;
+        .card { 
+            flex: 1; height: 65px; background: #222; border: 1px solid #444; border-radius: 10px;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            position: relative; transition: 0.1s; cursor: pointer; user-select: none;
+            cursor: pointer; position: relative; transition: 0.1s;
         }
         .card:active { transform: scale(0.95); border-color: var(--gold); }
-        .card.disabled { opacity: 0.5; filter: grayscale(1); pointer-events: none; }
-        .card-icon { font-size: 1.5rem; margin-bottom: -2px; }
-        .card-cost { font-size: 0.7rem; font-weight: bold; color: var(--gold); background: #000; padding: 2px 6px; border-radius: 10px; }
-        
-        /* Chat */
-        #chatCon { position: absolute; bottom: 100px; left: 20px; width: 300px; height: 200px; z-index: 40; pointer-events: auto; display: flex; flex-direction: column; }
-        #chatBox { flex: 1; overflow-y: auto; background: rgba(0,0,0,0.5); border-radius: 10px 10px 0 0; padding: 10px; color: white; font-size: 0.9rem; text-shadow: 1px 1px 0 #000; }
-        #chatInput { width: 100%; margin: 0; border-radius: 0 0 10px 10px; background: rgba(0,0,0,0.7); text-align: left; padding: 8px; }
+        .card.disabled { opacity: 0.4; filter: grayscale(1); }
+        .c-icon { font-size: 22px; line-height: 1; }
+        .c-cost { font-size: 10px; color: var(--gold); background: black; padding: 1px 5px; border-radius: 8px; margin-top: 2px; }
 
-        #msgBox { color: var(--red); margin-top: 10px; font-size: 0.9rem; min-height: 20px; }
+        /* Chat */
+        #chatCon { position: absolute; bottom: 90px; left: 10px; width: 250px; height: 150px; z-index: 100; display: flex; flex-direction: column; pointer-events: none; }
+        #chatBox { flex: 1; overflow-y: auto; background: rgba(0,0,0,0.5); padding: 5px; color: white; font-size: 12px; pointer-events: auto; -webkit-mask-image: linear-gradient(to bottom, transparent, black 10%); }
+        #chatInp { width: 100%; margin: 0; background: rgba(0,0,0,0.8); padding: 5px; pointer-events: auto; }
     </style>
 </head>
 <body>
 
     <div id="menuScreen" class="screen active">
-        <h1 style="color:var(--gold); font-size:3rem; text-shadow:0 0 10px rgba(255,215,0,0.3);">BATTLE WAR</h1>
-        <p style="color:#888; margin-bottom:20px;">Ultimate Update</p>
-        
-        <input type="text" id="playerName" placeholder="ตั้งชื่อของคุณ" maxlength="12">
-        <select id="gameMode" onchange="toggleBotOpt()">
-            <option value="1v1">1 vs 1 (Online)</option>
-            <option value="2v2">2 vs 2 (Online)</option>
+        <h1 style="color:var(--gold); font-size:40px;">BATTLE WAR</h1>
+        <p style="color:#777; margin-bottom:20px;">Zoom & Mobile Edition</p>
+        <input type="text" id="pName" placeholder="ชื่อตัวละคร" maxlength="10">
+        <select id="gMode" onchange="toggleBot()">
+            <option value="1v1">1 vs 1</option>
+            <option value="2v2">2 vs 2</option>
             <option value="bot">Play vs Bot</option>
         </select>
-        
-        <div id="botOptions" style="display:none; width:100%; flex-direction:column; align-items:center;">
-            <select id="botDiff">
-                <option value="easy">Bot: Easy (ง่าย)</option>
-                <option value="normal" selected>Bot: Normal (ปานกลาง)</option>
-                <option value="hard">Bot: Hard (ยาก)</option>
-            </select>
+        <div id="botOpt" style="display:none; width:100%; text-align:center;">
+            <select id="bDiff" style="width:50%;"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select>
         </div>
-        
-        <button class="btn btn-gold" style="width:80%; max-width:300px;" onclick="createRoom()">สร้างห้องใหม่</button>
-        
-        <div style="display:flex; gap:5px; width:80%; max-width:300px; margin-top:10px;">
-            <input type="text" id="roomCodeInput" placeholder="รหัสห้อง" style="margin:0; width:60%;">
-            <button class="btn btn-gray" style="margin:0; width:40%; padding:10px;" onclick="joinRoom()">เข้าร่วม</button>
+        <button class="btn btn-gold" onclick="createRoom()">สร้างห้อง</button>
+        <div style="display:flex; gap:5px; width:80%; max-width:300px;">
+            <input type="text" id="rCode" placeholder="Code" style="margin:0;">
+            <button class="btn btn-gray" onclick="joinRoom()" style="margin:0;">Join</button>
         </div>
-        <div id="msgBox"></div>
+        <div id="msg" style="color:#ff4757; margin-top:10px;"></div>
     </div>
 
     <div id="lobbyScreen" class="screen">
         <div class="lobby-box">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <h2 id="lobbyTitle" style="color:white;">Room: ...</h2>
-                <button class="btn btn-gray" style="padding:5px 15px; font-size:0.8rem;" onclick="location.reload()">ออก</button>
+            <div style="display:flex; justify-content:space-between;">
+                <h2 id="lTitle">Room</h2>
+                <button class="btn btn-gray" style="padding:5px 10px; font-size:12px;" onclick="location.reload()">ออก</button>
             </div>
-
-            <div style="margin: 15px 0;">
-                <p style="margin-bottom:5px; color:#aaa;">เลือกสีของคุณ:</p>
-                <div id="colorPalette" class="color-palette"></div>
-            </div>
-            
-            <div class="team-container">
+            <div id="cPal" style="margin:10px 0; text-align:center;"></div>
+            <div class="team-con">
                 <div class="team-col">
-                    <h3 style="color:#3b82f6">LEFT TEAM</h3>
-                    <button class="btn btn-gray" style="font-size:0.7rem; padding:5px 10px;" onclick="switchSide('left')">อยู่ฝั่งนี้</button>
-                    <div id="listLeft" style="width:100%; margin-top:10px;"></div>
+                    <h3 style="color:#3b82f6; text-align:center;">Left</h3>
+                    <button class="btn btn-gray" style="width:100%; padding:5px;" onclick="sSide('left')">เลือกฝั่ง</button>
+                    <div id="listL" style="margin-top:5px;"></div>
                 </div>
-                
-                <div style="display:flex; flex-direction:column; justify-content:center; align-items:center;">
-                    <h1 style="color:#555;">VS</h1>
-                    <button id="readyBtn" class="btn btn-gold" onclick="toggleReady()">พร้อม</button>
+                <div style="display:flex; flex-direction:column; justify-content:center;">
+                    <button id="rBtn" class="btn btn-gold" onclick="tReady()">พร้อม</button>
                 </div>
-
                 <div class="team-col">
-                    <h3 style="color:#ef4444">RIGHT TEAM</h3>
-                    <button class="btn btn-gray" style="font-size:0.7rem; padding:5px 10px;" onclick="switchSide('right')">อยู่ฝั่งนี้</button>
-                    <div id="listRight" style="width:100%; margin-top:10px;"></div>
+                    <h3 style="color:#ef4444; text-align:center;">Right</h3>
+                    <button class="btn btn-gray" style="width:100%; padding:5px;" onclick="sSide('right')">เลือกฝั่ง</button>
+                    <div id="listR" style="margin-top:5px;"></div>
                 </div>
             </div>
         </div>
@@ -169,278 +146,254 @@
     <div id="gameScreen" class="screen" style="background:black;">
         <div id="viewport">
             <div id="world">
-                <div class="base" style="left: 100px;">
-                    <div id="nameLeft" class="team-names">Team Left</div>
-                    🏰
-                    <div class="hp-bar-con"><div id="hpLeft" class="hp-fill" style="background:#3b82f6;"></div></div>
-                </div>
-                <div class="base" style="right: 100px;">
-                    <div id="nameRight" class="team-names">Team Right</div>
-                    🏰
-                    <div class="hp-bar-con"><div id="hpRight" class="hp-fill" style="background:#ef4444;"></div></div>
-                </div>
-                
-                <div id="unitsLayer"></div>
+                <div class="base" style="left:100px; color:#3b82f6;">🏰<div class="hp-bar"><div id="hpL" class="hp-val" style="background:#3b82f6;"></div></div></div>
+                <div class="base" style="right:100px; color:#ef4444;">🏰<div class="hp-bar"><div id="hpR" class="hp-val" style="background:#ef4444;"></div></div></div>
+                <div id="uLayer"></div>
                 <div id="fxLayer"></div>
             </div>
         </div>
 
-        <div class="hud-top">
-            <div class="energy-badge">⚡ <span id="energyVal">0</span></div>
-        </div>
-
+        <div class="hud-top"><div class="energy">⚡ <span id="eng">0</span></div></div>
+        
         <div id="chatCon">
             <div id="chatBox"></div>
-            <input type="text" id="chatInput" placeholder="พิมพ์ข้อความ..." onkeydown="sendChat(event)">
+            <input id="chatInp" type="text" placeholder="แชท..." onkeydown="sendC(event)">
         </div>
 
         <div class="dock">
-            <div class="card" onclick="spawn('sword', 20)"><div class="card-icon">⚔️</div><div class="card-cost">20</div></div>
-            <div class="card" onclick="spawn('bow', 50)"><div class="card-icon">🏹</div><div class="card-cost">50</div></div>
-            <div class="card" onclick="spawn('assassin', 50)"><div class="card-icon">🥷</div><div class="card-cost">50</div></div>
-            <div class="card" onclick="spawn('tank', 70)"><div class="card-icon">🛡️</div><div class="card-cost">70</div></div>
-            <div class="card" onclick="spawn('mage', 100)"><div class="card-icon">🔮</div><div class="card-cost">100</div></div>
-            <div class="card" onclick="spawn('cannon', 100)"><div class="card-icon">💣</div><div class="card-cost">100</div></div>
+            <div class="card" onclick="spawn('sword',20)"><span class="c-icon">⚔️</span><span class="c-cost">20</span></div>
+            <div class="card" onclick="spawn('bow',50)"><span class="c-icon">🏹</span><span class="c-cost">50</span></div>
+            <div class="card" onclick="spawn('assassin',50)"><span class="c-icon">🥷</span><span class="c-cost">50</span></div>
+            <div class="card" onclick="spawn('tank',70)"><span class="c-icon">🛡️</span><span class="c-cost">70</span></div>
+            <div class="card" onclick="spawn('mage',100)"><span class="c-icon">🔮</span><span class="c-cost">100</span></div>
+            <div class="card" onclick="spawn('cannon',100)"><span class="c-icon">💣</span><span class="c-cost">100</span></div>
         </div>
     </div>
 
     <script>
         const socket = io();
-        let mySide = null;
-        let myColor = '';
-        let roomId = null;
-        let energy = 0;
+        let rid=null, mySide=null, eng=0;
+        const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣' };
 
-        function toggleBotOpt() {
-            const m = document.getElementById('gameMode').value;
-            document.getElementById('botOptions').style.display = m === 'bot' ? 'flex' : 'none';
-        }
+        // --- MENU & LOBBY ---
+        function toggleBot(){ document.getElementById('botOpt').style.display = document.getElementById('gMode').value==='bot'?'block':'none'; }
+        function createRoom(){ socket.emit('create_room', { name: v('pName')||'Host', mode: v('gMode'), difficulty: v('bDiff') }); }
+        function joinRoom(){ const c=v('rCode'); if(c) socket.emit('join_room', { roomId:c, name: v('pName')||'Joiner' }); else alert('ใส่รหัสห้อง'); }
+        function v(id){ return document.getElementById(id).value; }
+        
+        socket.on('join_success', d=>{ rid=d.roomId; toScr('lobbyScreen'); });
+        socket.on('room_created', d=>{ rid=d.roomId; toScr('lobbyScreen'); });
+        socket.on('error_msg', m=>document.getElementById('msg').innerText=m);
 
-        function createRoom() {
-            const name = document.getElementById('playerName').value || 'Host';
-            const mode = document.getElementById('gameMode').value;
-            const diff = document.getElementById('botDiff').value;
-            socket.emit('create_room', { name, mode, difficulty: diff });
-        }
-
-        function joinRoom() {
-            const name = document.getElementById('playerName').value || 'Player';
-            const code = document.getElementById('roomCodeInput').value;
-            if(!code) return document.getElementById('msgBox').innerText = "กรุณาใส่รหัสห้อง";
-            socket.emit('join_room', { roomId: code, name });
-        }
-
-        socket.on('join_success', (data) => { roomId = data.roomId; enterLobby(); });
-        socket.on('room_created', (data) => { roomId = data.roomId; enterLobby(); });
-        socket.on('error_msg', (msg) => document.getElementById('msgBox').innerText = msg);
-
-        // --- LOBBY LOGIC ---
-        socket.on('update_lobby', (data) => {
-            document.getElementById('lobbyTitle').innerText = `Room: ${roomId}`;
-            const players = data.players;
-            const colors = data.colors;
+        socket.on('update_lobby', d=>{
+            document.getElementById('lTitle').innerText = `Room: ${rid}`;
+            const l=document.getElementById('listL'), r=document.getElementById('listR'), pBox=document.getElementById('cPal');
+            l.innerHTML=''; r.innerHTML=''; pBox.innerHTML='';
             
-            const l = document.getElementById('listLeft');
-            const r = document.getElementById('listRight');
-            l.innerHTML=''; r.innerHTML='';
+            const me = d.players.find(p=>p.id===socket.id);
+            if(me) mySide = me.side;
 
-            const me = players.find(p => p.id === socket.id);
-            if(me) { mySide = me.side; myColor = me.color; }
-
-            // Render Players
-            players.forEach(p => {
-                const div = document.createElement('div');
-                div.className = 'player-card';
-                div.style.borderLeftColor = p.color;
-                div.innerHTML = `<span>${p.name}</span> <span>${p.ready ? '✅' : '...'}</span>`;
-                if(p.side === 'left') l.appendChild(div);
-                else if(p.side === 'right') r.appendChild(div);
-            });
-
-            // Render Color Picker
-            const pal = document.getElementById('colorPalette');
-            pal.innerHTML = '';
-            colors.forEach(c => {
+            d.colors.forEach(c => {
                 const dot = document.createElement('div');
-                dot.className = 'color-dot';
+                dot.className = `color-dot ${me && me.color===c ? 'selected' : ''}`;
+                if(d.players.some(p=>p.color===c && p.id!==socket.id)) dot.classList.add('disabled');
                 dot.style.background = c;
-                
-                // เช็คว่าสีนี้มีคนใช้ยัง (ยกเว้นเรา)
-                const isTaken = players.some(p => p.color === c && p.id !== socket.id);
-                if(isTaken) dot.classList.add('disabled');
-                if(me && me.color === c) dot.classList.add('selected');
-                
-                dot.onclick = () => socket.emit('select_color', { roomId, color: c });
-                pal.appendChild(dot);
+                dot.onclick = () => socket.emit('select_color', { roomId:rid, color:c });
+                pBox.appendChild(dot);
             });
 
+            d.players.forEach(p=>{
+                const div = document.createElement('div');
+                div.className = 'p-card'; div.style.borderLeftColor = p.color;
+                div.innerHTML = `<span>${p.name}</span><span>${p.ready?'✅':'...'}</span>`;
+                if(p.side==='left') l.appendChild(div); else if(p.side==='right') r.appendChild(div);
+            });
+            
             if(me) {
-                const btn = document.getElementById('readyBtn');
-                btn.innerText = me.ready ? "ยกเลิก" : "พร้อม !";
-                btn.className = me.ready ? "btn btn-gold" : "btn btn-gray";
+                const b=document.getElementById('rBtn');
+                b.innerText = me.ready?"ยกเลิก":"พร้อม";
+                b.className = me.ready?"btn btn-gold":"btn btn-gray";
             }
         });
 
-        function switchSide(s) { socket.emit('select_side', { roomId, side: s }); }
-        function toggleReady() { socket.emit('toggle_ready', roomId); }
-        function enterLobby() {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById('lobbyScreen').classList.add('active');
-        }
+        function sSide(s){ socket.emit('select_side', { roomId:rid, side:s }); }
+        function tReady(){ socket.emit('toggle_ready', rid); }
+        function toScr(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
 
         // --- GAME LOGIC ---
-        socket.on('start_game', (data) => {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById('gameScreen').style.display = 'block';
-            
-            // Set Player Names
-            const leftNames = data.players.filter(p=>p.side==='left').map(p=>p.name).join(', ');
-            const rightNames = data.players.filter(p=>p.side==='right').map(p=>p.name).join(', ');
-            document.getElementById('nameLeft').innerText = leftNames;
-            document.getElementById('nameRight').innerText = rightNames;
-
-            // Camera Setup
-            const vp = document.getElementById('viewport');
-            let startX = mySide === 'right' ? -(1600 - vp.clientWidth) : 0;
-            initCamera(startX, -(900 - vp.clientHeight)/2);
+        socket.on('start_game', ()=>{ 
+            toScr('gameScreen'); 
+            // เริ่มต้น Zoom 
+            initCamera(); 
         });
 
-        function spawn(type, cost) {
-            if(energy >= cost) socket.emit('spawn_request', { roomId, type });
-        }
-
-        function sendChat(e) {
-            if(e.key === 'Enter') {
-                const inp = document.getElementById('chatInput');
-                if(inp.value.trim()) {
-                    socket.emit('send_chat', { roomId, msg: inp.value.trim() });
-                    inp.value = '';
-                }
-            }
-        }
-
-        socket.on('chat_msg', (data) => {
-            const box = document.getElementById('chatBox');
-            const p = document.createElement('div');
-            p.innerHTML = `<span style="color:${data.color}; font-weight:bold;">${data.name}:</span> ${data.msg}`;
-            box.appendChild(p);
-            box.scrollTop = box.scrollHeight;
+        function spawn(t,c){ if(eng>=c) socket.emit('spawn_request', { roomId:rid, type:t }); }
+        function sendC(e){ if(e.key==='Enter'){ const i=document.getElementById('chatInp'); if(i.value) socket.emit('send_chat',{roomId:rid, msg:i.value}); i.value=''; } }
+        
+        socket.on('chat_msg', d=>{
+            const b=document.getElementById('chatBox');
+            b.innerHTML += `<div style="color:${d.color}"><b>${d.name}:</b> ${d.msg}</div>`;
+            b.scrollTop=b.scrollHeight;
         });
 
-        const ICONS = { sword: '⚔️', bow: '🏹', tank: '🛡️', mage: '🔮', assassin: '🥷', cannon: '💣' };
-
-        socket.on('world_update', (data) => {
-            energy = data.myEng;
-            document.getElementById('energyVal').innerText = energy;
-            
-            // Update Cards
-            document.querySelectorAll('.card').forEach(c => {
-                const cost = parseInt(c.querySelector('.card-cost').innerText);
-                if(energy < cost) c.classList.add('disabled'); else c.classList.remove('disabled');
+        socket.on('world_update', d=>{
+            eng = d.myEng; document.getElementById('eng').innerText = eng;
+            document.querySelectorAll('.card').forEach(c=>{
+                const cost = parseInt(c.querySelector('.c-cost').innerText);
+                if(eng<cost) c.classList.add('disabled'); else c.classList.remove('disabled');
             });
 
-            document.getElementById('hpLeft').style.width = (data.b.left/10) + '%';
-            document.getElementById('hpRight').style.width = (data.b.right/10) + '%';
+            document.getElementById('hpL').style.width = (d.b.left/10)+'%';
+            document.getElementById('hpR').style.width = (d.b.right/10)+'%';
 
-            const layer = document.getElementById('unitsLayer');
+            const uL = document.getElementById('uLayer');
             const fxL = document.getElementById('fxLayer');
-            const activeIds = new Set();
+            const exist = new Set();
 
-            // Render Units
-            data.u.forEach(u => {
-                activeIds.add(u.i);
+            d.u.forEach(u=>{
+                exist.add(u.i);
                 let el = document.getElementById(u.i);
-                if(!el) {
-                    el = document.createElement('div');
-                    el.id = u.i;
-                    el.className = 'unit';
-                    el.innerText = ICONS[u.t];
-                    el.style.backgroundColor = u.c;
-                    el.style.borderColor = u.c;
-                    el.style.boxShadow = `0 0 10px ${u.c}`;
-                    layer.appendChild(el);
+                if(!el){
+                    el = document.createElement('div'); el.id=u.i; el.className='unit';
+                    el.innerText = ICONS[u.t]; el.style.background=u.c; el.style.borderColor=u.c;
+                    el.style.boxShadow=`0 0 5px ${u.c}`;
+                    uL.appendChild(el);
                 }
-                el.style.left = u.x + 'px';
-                el.style.top = u.y + 'px';
+                el.style.left = u.x+'px'; el.style.top = u.y+'px';
+            });
+            Array.from(uL.children).forEach(e=>{ if(!exist.has(e.id)) e.remove(); });
+
+            document.querySelectorAll('.proj').forEach(e=>e.remove());
+            d.proj.forEach(p=>{
+                const el = document.createElement('div'); el.className=`proj ${p.t}`;
+                el.style.left=p.x+'px'; el.style.top=p.y+'px';
+                fxL.appendChild(el);
             });
 
-            // Cleanup Units
-            Array.from(layer.children).forEach(el => {
-                if(el.classList.contains('unit') && !activeIds.has(el.id)) el.remove();
+            d.fx.forEach(f=>{
+                if(f.type==='dmg'){
+                    const e=document.createElement('div'); e.className='dmg'; e.innerText=`-${f.val}`;
+                    e.style.left=f.x+'px'; e.style.top=(f.y-20)+'px';
+                    fxL.appendChild(e); setTimeout(()=>e.remove(),800);
+                } else if(f.type==='aoe'){
+                    const e=document.createElement('div'); e.className='aoe'; 
+                    e.style.left=f.x+'px'; e.style.top=f.y+'px';
+                    e.style.width=(f.r*2)+'px'; e.style.height=(f.r*2)+'px';
+                    fxL.appendChild(e); setTimeout(()=>e.remove(),400);
+                } else if(f.type==='warp'){
+                    const e=document.createElement('div'); e.innerText='💨'; e.style.position='absolute';
+                    e.style.left=f.x+'px'; e.style.top=f.y+'px'; e.style.fontSize='25px';
+                    fxL.appendChild(e); setTimeout(()=>e.remove(),500);
+                }
             });
-
-            // Render Projectiles (ล้างและวาดใหม่ทุกเฟรม ง่ายกว่า sync ID)
-            const oldProjs = document.querySelectorAll('.proj');
-            oldProjs.forEach(p => p.remove());
-            
-            if(data.proj) {
-                data.proj.forEach(p => {
-                    const el = document.createElement('div');
-                    el.className = `proj ${p.t}`;
-                    el.style.left = p.x + 'px';
-                    el.style.top = p.y + 'px';
-                    fxL.appendChild(el);
-                });
-            }
-
-            // Render Effects
-            if(data.fx) {
-                data.fx.forEach(f => {
-                    if(f.type==='dmg') {
-                        const t = document.createElement('div');
-                        t.className = 'dmg-text'; t.innerText = `-${f.val}`;
-                        t.style.left = f.x+'px'; t.style.top = (f.y-20)+'px';
-                        fxL.appendChild(t); setTimeout(()=>t.remove(),800);
-                    } else if (f.type==='aoe') {
-                        const c = document.createElement('div');
-                        c.className = 'aoe-fx';
-                        c.style.left = f.x+'px'; c.style.top = f.y+'px';
-                        c.style.width = (f.r*2)+'px'; c.style.height = (f.r*2)+'px';
-                        fxL.appendChild(c); setTimeout(()=>c.remove(),400);
-                    } else if (f.type==='warp') {
-                        // Effect วาร์ปง่ายๆ
-                        const t = document.createElement('div');
-                        t.innerText = "💨"; t.style.position="absolute";
-                        t.style.left = f.x+'px'; t.style.top = f.y+'px'; t.style.fontSize="20px";
-                        fxL.appendChild(t); setTimeout(()=>t.remove(), 500);
-                    }
-                });
-            }
         });
 
-        socket.on('game_over', (data) => {
-            alert(data.winner === mySide ? "VICTORY!" : "DEFEAT!");
-            location.reload();
-        });
+        socket.on('game_over', d=>{ alert(d.winner===mySide?"ชนะ!":"แพ้!"); location.reload(); });
 
-        // Touch/Mouse Camera logic
-        function initCamera(ix, iy) {
+        // --- CAMERA SYSTEM (ZOOM & PAN) ---
+        function initCamera() {
             const vp = document.getElementById('viewport');
             const world = document.getElementById('world');
-            let x = ix, y = iy;
-            let isDrag = false, startX, startY;
-
-            const update = () => world.style.transform = `translate(${x}px, ${y}px)`;
-            update();
-
-            const start = (e) => { 
-                if(e.target.closest('.card') || e.target.closest('#chatCon')) return; // ignore UI touches
-                isDrag=true; const t=e.touches?e.touches[0]:e; startX=t.pageX-x; startY=t.pageY-y; 
+            
+            // State
+            let state = {
+                x: mySide === 'right' ? -(1600 - vp.clientWidth) : 0, // เริ่มต้นตามฝั่ง
+                y: -(900 - vp.clientHeight) / 2, // เริ่มต้นตรงกลางแนวตั้ง
+                scale: 1, // ระดับซูมเริ่มต้น
             };
-            const move = (e) => {
-                if(!isDrag) return;
-                const t=e.touches?e.touches[0]:e;
-                x=t.pageX-startX; y=t.pageY-startY;
-                const minX = -(1600 - vp.clientWidth);
-                const minY = -(900 - vp.clientHeight);
-                if(x>0)x=0; if(x<minX)x=minX; if(y>0)y=0; if(y<minY)y=minY;
-                update();
-            };
-            const end = () => isDrag=false;
 
-            vp.addEventListener('mousedown', start); vp.addEventListener('touchstart', start, {passive:false});
-            window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, {passive:false});
-            window.addEventListener('mouseup', end); window.addEventListener('touchend', end);
+            // Limits
+            const MIN_SCALE = 0.5;
+            const MAX_SCALE = 1.5;
+            const WORLD_W = 1600;
+            const WORLD_H = 900;
+
+            function updateTransform() {
+                // คำนวณขอบเขตการลาก (Clamping) เพื่อไม่ให้ลาก Map หาย
+                // สูตร: minX = viewportWidth - (worldWidth * scale)
+                const minX = vp.clientWidth - (WORLD_W * state.scale);
+                const minY = vp.clientHeight - (WORLD_H * state.scale);
+
+                // ถ้า Zoom ออกจน map เล็กกว่าจอ ให้จัดกึ่งกลาง
+                if (minX > 0) state.x = minX / 2;
+                else state.x = Math.max(minX, Math.min(0, state.x));
+
+                if (minY > 0) state.y = minY / 2;
+                else state.y = Math.max(minY, Math.min(0, state.y));
+
+                world.style.transform = `translate3d(${state.x}px, ${state.y}px, 0) scale(${state.scale})`;
+            }
+
+            // --- Touch Logic (Mobile) ---
+            let lastDist = 0;
+            let startX = 0, startY = 0;
+            let isDragging = false;
+
+            vp.addEventListener('touchstart', (e) => {
+                if(e.touches.length === 1) {
+                    isDragging = true;
+                    startX = e.touches[0].clientX - state.x;
+                    startY = e.touches[0].clientY - state.y;
+                } else if (e.touches.length === 2) {
+                    isDragging = false;
+                    lastDist = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                }
+            }, {passive: false});
+
+            vp.addEventListener('touchmove', (e) => {
+                e.preventDefault(); // กันจอเลื่อนเอง
+                
+                if (e.touches.length === 1 && isDragging) {
+                    // Pan (ลาก)
+                    state.x = e.touches[0].clientX - startX;
+                    state.y = e.touches[0].clientY - startY;
+                    updateTransform();
+                } else if (e.touches.length === 2) {
+                    // Pinch Zoom
+                    const dist = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                    
+                    if (lastDist) {
+                        const delta = dist - lastDist;
+                        const newScale = state.scale + (delta * 0.005);
+                        state.scale = Math.min(Math.max(newScale, MIN_SCALE), MAX_SCALE);
+                        updateTransform();
+                    }
+                    lastDist = dist;
+                }
+            }, {passive: false});
+
+            vp.addEventListener('touchend', () => { isDragging = false; lastDist = 0; });
+
+            // --- Mouse Logic (Desktop) ---
+            vp.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                startX = e.clientX - state.x;
+                startY = e.clientY - state.y;
+            });
+            window.addEventListener('mousemove', (e) => {
+                if(!isDragging) return;
+                state.x = e.clientX - startX;
+                state.y = e.clientY - startY;
+                updateTransform();
+            });
+            window.addEventListener('mouseup', () => isDragging = false);
+
+            vp.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const delta = -Math.sign(e.deltaY) * 0.1;
+                const newScale = state.scale + delta;
+                state.scale = Math.min(Math.max(newScale, MIN_SCALE), MAX_SCALE);
+                updateTransform();
+            }, {passive: false});
+
+            // Initial Update
+            updateTransform();
         }
     </script>
 </body>
