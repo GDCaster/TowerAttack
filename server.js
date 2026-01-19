@@ -11,7 +11,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // --- GAME CONFIG ---
 const WORLD_W = 1600;
-const WORLD_H = 900; // ความสูงสนาม
+const WORLD_H = 900;
 const MAX_ENERGY = 200;
 
 // ปรับสมดุล (Balance)
@@ -21,7 +21,8 @@ const SPECS = {
     tank:     { hp: 140, dmg: 3,  range: 50,  speed: 1.2, size: 36, cost: 70, atkRate: 1200 },
     mage:     { hp: 30,  dmg: 12, range: 250, speed: 1.8, size: 30, cost: 100, atkRate: 1500, type:'aoe', radius: 60 },
     assassin: { hp: 30,  dmg: 10, range: 40,  speed: 4.5, size: 25, cost: 50, atkRate: 500, special: 'jump' },
-    cannon:   { hp: 70,  dmg: 25, range: 450, speed: 1.5, size: 40, cost: 100, atkRate: 2500, type:'aoe', radius: 100 }
+    // ปรับราคา Cannon เป็น 175 ตามสั่ง
+    cannon:   { hp: 70,  dmg: 25, range: 450, speed: 1.5, size: 40, cost: 175, atkRate: 2500, type:'aoe', radius: 100 }
 };
 
 const BOT_SETTINGS = {
@@ -42,7 +43,6 @@ setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
         
-        // ลบห้องทิ้งถ้าไม่มีคนอยู่
         if (room.players.length === 0) {
             delete rooms[roomId];
             continue;
@@ -51,7 +51,6 @@ setInterval(() => {
         if (room.status === 'playing') {
             updateGame(room);
             
-            // Broadcast ข้อมูล
             const packet = {
                 b: room.bases,
                 u: room.units.map(u => ({
@@ -67,12 +66,11 @@ setInterval(() => {
 
             room.players.forEach(player => {
                 if(player.isBot) return;
-                // ส่ง Energy แยกส่วนตัว
                 packet.myEng = Math.floor(player.energy);
                 io.to(player.id).emit('world_update', packet);
             });
 
-            room.effects = []; // เคลียร์ Effect ทุกเฟรม
+            room.effects = [];
         }
     }
 }, 50);
@@ -99,6 +97,7 @@ function updateGame(room) {
         let target = null;
         let minDist = 999;
 
+        // หาเป้าหมายที่เป็น Unit
         room.units.forEach(o => {
             if (o.side !== u.side && !o.dead) {
                 const dist = Math.hypot(u.x - o.x, u.y - o.y);
@@ -117,22 +116,29 @@ function updateGame(room) {
             }
         }
 
-        // Base Logic
-        const canHitBase = (u.side === 'left' && u.x >= WORLD_W - 220) || (u.side === 'right' && u.x <= 220);
+        // --- Base Logic (ปรับปรุงใหม่) ---
+        // คำนวณระยะห่างจากฐานศัตรู (ฐานอยู่ x:100 และ x:WORLD_W-100)
+        const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
+        const distToBase = Math.abs(u.x - enemyBaseX);
+        
+        // เงื่อนไข: ถ้าอยู่ในระยะยิงของตัวเอง ให้ยิงฐานเลย (ไม่ว่าใกล้หรือไกล)
+        const canHitBase = distToBase <= SPECS[u.type].range;
         
         if (canHitBase) {
+            // ตีฐาน
             if (now - u.lastAttack > SPECS[u.type].atkRate) {
                 u.lastAttack = now;
                 u.action = 'attack';
                 const targetSide = u.side === 'left' ? 'right' : 'left';
                 room.bases[targetSide] -= u.dmg;
                 
-                const baseX = u.side === 'left' ? WORLD_W - 100 : 100;
-                room.effects.push({ type: 'dmg', x: baseX, y: WORLD_H/2, val: u.dmg });
+                // Effect ขึ้นที่ฐาน
+                room.effects.push({ type: 'dmg', x: enemyBaseX, y: WORLD_H/2, val: u.dmg });
 
                 if (room.bases[targetSide] <= 0) endGame(room, u.side);
             }
         } else if (target && minDist <= SPECS[u.type].range) {
+            // ตี Unit
             if (now - u.lastAttack > SPECS[u.type].atkRate) {
                 u.lastAttack = now;
                 u.action = 'attack';
@@ -145,9 +151,12 @@ function updateGame(room) {
                 }
             }
         } else {
+            // เดินหน้า
             const dir = u.side === 'left' ? 1 : -1;
             u.x += dir * u.speed;
             u.action = 'walk';
+            
+            // เลี้ยงเลนกลาง
             const mid = WORLD_H / 2;
             if (u.y < mid - 100) u.y += 0.5;
             if (u.y > mid + 100) u.y -= 0.5;
@@ -174,7 +183,6 @@ function updateProjectiles(room) {
         const dist = Math.hypot(dx, dy);
 
         if (dist < p.speed) {
-            // AoE Damage
             room.units.forEach(u => {
                 if (u.side !== p.side && !u.dead) {
                     const d = Math.hypot(u.x - p.tx, u.y - p.ty);
@@ -226,7 +234,6 @@ function spawnUnit(room, player, type) {
 function endGame(room, winner) {
     room.status = 'finished';
     io.to(room.id).emit('game_over', { winner });
-    // ลบห้องหลังจบ 3 วิ เพื่อเคลียร์ Mem
     setTimeout(() => { delete rooms[room.id]; }, 3000);
 }
 

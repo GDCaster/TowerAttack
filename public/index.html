@@ -18,13 +18,11 @@
         .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 50; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
         .active { display: flex !important; }
         
-        /* UI Elements */
         input, select { padding: 12px; border-radius: 8px; border: 1px solid #333; background: #222; color: white; margin: 5px; width: 80%; max-width: 300px; text-align: center; font-size: 16px; }
         .btn { padding: 12px 25px; border-radius: 25px; border: none; font-weight: bold; margin: 10px; cursor: pointer; font-size: 16px; }
         .btn-gold { background: var(--gold); color: black; }
         .btn-gray { background: #333; color: #ccc; }
 
-        /* Lobby */
         .lobby-box { width: 90%; max-width: 600px; background: #151515; padding: 20px; border-radius: 15px; border: 1px solid #333; max-height: 90vh; overflow-y: auto; }
         .team-con { display: flex; gap: 10px; margin-top: 15px; min-height: 150px; }
         .team-col { flex: 1; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 10px; }
@@ -33,28 +31,25 @@
         .color-dot.selected { border-color: white; transform: scale(1.1); }
         .color-dot.disabled { opacity: 0.2; pointer-events: none; }
 
-        /* GAME VIEWPORT & WORLD */
         #viewport { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             overflow: hidden; z-index: 1; background: #111; 
-            touch-action: none; /* สำคัญมากสำหรับ Mobile gesture */
+            touch-action: none; 
         }
         
         #world { 
             position: absolute; top: 0; left: 0; 
             width: 1600px; height: 900px; 
-            /* พื้นหลังแบบ Grid สำหรับมือถือ ให้กะระยะง่าย */
             background-color: #0f0f0f;
             background-image: 
                 linear-gradient(#222 1px, transparent 1px),
                 linear-gradient(90deg, #222 1px, transparent 1px);
-            background-size: 100px 100px; /* ตารางขนาด 100px */
+            background-size: 100px 100px; 
             border: 2px solid #444;
-            transform-origin: 0 0; /* จุดหมุนซูมเริ่มจากมุมซ้ายบน */
+            transform-origin: 0 0;
             will-change: transform;
         }
         
-        /* Game Objects */
         .base { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; text-align: center; font-size: 50px; }
         .unit { 
             position: absolute; width: 30px; height: 30px; border-radius: 50%; 
@@ -65,14 +60,12 @@
         .hp-bar { width: 80px; height: 6px; background: #333; margin: 0 auto; border-radius: 3px; overflow: hidden; }
         .hp-val { height: 100%; width: 100%; transition: width 0.2s; }
         
-        /* Effects */
         .proj { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: white; z-index: 12; transform: translate(-50%,-50%); border: 2px solid black; }
         .proj.mage { background: #a29bfe; box-shadow: 0 0 8px #a29bfe; }
         .proj.cannon { background: #333; width: 16px; height: 16px; }
         .aoe { position: absolute; border: 2px solid white; background: rgba(255,255,255,0.2); border-radius: 50%; z-index: 11; animation: expand 0.4s forwards; }
         .dmg { position: absolute; color: #ff4757; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
 
-        /* HUD - Fixed on Screen */
         .hud-top { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; pointer-events: none; }
         .energy { background: rgba(0,0,0,0.8); color: var(--gold); padding: 5px 20px; border-radius: 20px; border: 1px solid var(--gold); font-size: 24px; font-weight: bold; display: inline-block; }
         
@@ -90,10 +83,27 @@
         .c-icon { font-size: 22px; line-height: 1; }
         .c-cost { font-size: 10px; color: var(--gold); background: black; padding: 1px 5px; border-radius: 8px; margin-top: 2px; }
 
-        /* Chat */
-        #chatCon { position: absolute; bottom: 90px; left: 10px; width: 250px; height: 150px; z-index: 100; display: flex; flex-direction: column; pointer-events: none; }
-        #chatBox { flex: 1; overflow-y: auto; background: rgba(0,0,0,0.5); padding: 5px; color: white; font-size: 12px; pointer-events: auto; -webkit-mask-image: linear-gradient(to bottom, transparent, black 10%); }
-        #chatInp { width: 100%; margin: 0; background: rgba(0,0,0,0.8); padding: 5px; pointer-events: auto; }
+        /* Chat Styles Updated */
+        #chatCon { 
+            position: absolute; bottom: 90px; left: 10px; width: 250px; height: 150px; z-index: 100; 
+            display: flex; flex-direction: column; pointer-events: none; 
+        }
+        #chatBox { 
+            flex: 1; overflow-y: auto; padding: 5px; color: white; font-size: 12px; pointer-events: auto; 
+            /* เพิ่มพื้นหลังจางๆ และขอบ เพื่อให้เห็นขอบเขตชัดเจน กันคนกดผิด */
+            background: rgba(0,0,0,0.4); 
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 5px 5px 0 0;
+        }
+        /* เพิ่มขอบตัวหนังสือ (Text Stroke / Shadow) */
+        #chatBox div {
+            text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+        }
+        #chatInp { 
+            width: 100%; margin: 0; background: rgba(0,0,0,0.8); padding: 5px; pointer-events: auto; 
+            border-radius: 0 0 5px 5px;
+            border: 1px solid #444;
+        }
     </style>
 </head>
 <body>
@@ -166,7 +176,7 @@
             <div class="card" onclick="spawn('assassin',50)"><span class="c-icon">🥷</span><span class="c-cost">50</span></div>
             <div class="card" onclick="spawn('tank',70)"><span class="c-icon">🛡️</span><span class="c-cost">70</span></div>
             <div class="card" onclick="spawn('mage',100)"><span class="c-icon">🔮</span><span class="c-cost">100</span></div>
-            <div class="card" onclick="spawn('cannon',100)"><span class="c-icon">💣</span><span class="c-cost">100</span></div>
+            <div class="card" onclick="spawn('cannon',175)"><span class="c-icon">💣</span><span class="c-cost">175</span></div>
         </div>
     </div>
 
@@ -223,7 +233,6 @@
         // --- GAME LOGIC ---
         socket.on('start_game', ()=>{ 
             toScr('gameScreen'); 
-            // เริ่มต้น Zoom 
             initCamera(); 
         });
 
@@ -295,26 +304,21 @@
             const vp = document.getElementById('viewport');
             const world = document.getElementById('world');
             
-            // State
             let state = {
-                x: mySide === 'right' ? -(1600 - vp.clientWidth) : 0, // เริ่มต้นตามฝั่ง
-                y: -(900 - vp.clientHeight) / 2, // เริ่มต้นตรงกลางแนวตั้ง
-                scale: 1, // ระดับซูมเริ่มต้น
+                x: mySide === 'right' ? -(1600 - vp.clientWidth) : 0, 
+                y: -(900 - vp.clientHeight) / 2, 
+                scale: 1, 
             };
 
-            // Limits
             const MIN_SCALE = 0.5;
             const MAX_SCALE = 1.5;
             const WORLD_W = 1600;
             const WORLD_H = 900;
 
             function updateTransform() {
-                // คำนวณขอบเขตการลาก (Clamping) เพื่อไม่ให้ลาก Map หาย
-                // สูตร: minX = viewportWidth - (worldWidth * scale)
                 const minX = vp.clientWidth - (WORLD_W * state.scale);
                 const minY = vp.clientHeight - (WORLD_H * state.scale);
 
-                // ถ้า Zoom ออกจน map เล็กกว่าจอ ให้จัดกึ่งกลาง
                 if (minX > 0) state.x = minX / 2;
                 else state.x = Math.max(minX, Math.min(0, state.x));
 
@@ -324,7 +328,6 @@
                 world.style.transform = `translate3d(${state.x}px, ${state.y}px, 0) scale(${state.scale})`;
             }
 
-            // --- Touch Logic (Mobile) ---
             let lastDist = 0;
             let startX = 0, startY = 0;
             let isDragging = false;
@@ -344,15 +347,13 @@
             }, {passive: false});
 
             vp.addEventListener('touchmove', (e) => {
-                e.preventDefault(); // กันจอเลื่อนเอง
+                e.preventDefault(); 
                 
                 if (e.touches.length === 1 && isDragging) {
-                    // Pan (ลาก)
                     state.x = e.touches[0].clientX - startX;
                     state.y = e.touches[0].clientY - startY;
                     updateTransform();
                 } else if (e.touches.length === 2) {
-                    // Pinch Zoom
                     const dist = Math.hypot(
                         e.touches[0].clientX - e.touches[1].clientX,
                         e.touches[0].clientY - e.touches[1].clientY
@@ -370,7 +371,6 @@
 
             vp.addEventListener('touchend', () => { isDragging = false; lastDist = 0; });
 
-            // --- Mouse Logic (Desktop) ---
             vp.addEventListener('mousedown', (e) => {
                 isDragging = true;
                 startX = e.clientX - state.x;
@@ -392,7 +392,6 @@
                 updateTransform();
             }, {passive: false});
 
-            // Initial Update
             updateTransform();
         }
     </script>
