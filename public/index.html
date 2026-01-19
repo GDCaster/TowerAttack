@@ -83,27 +83,35 @@
         .c-icon { font-size: 22px; line-height: 1; }
         .c-cost { font-size: 10px; color: var(--gold); background: black; padding: 1px 5px; border-radius: 8px; margin-top: 2px; }
 
-        /* Chat Styles Updated */
+        /* --- Chat Styles Updated --- */
         #chatCon { 
-            position: absolute; bottom: 90px; left: 10px; width: 250px; height: 150px; z-index: 100; 
+            position: absolute; bottom: 90px; left: 10px; width: 280px; height: 160px; z-index: 100; 
             display: flex; flex-direction: column; pointer-events: none; 
         }
         #chatBox { 
-            flex: 1; overflow-y: auto; padding: 5px; color: white; font-size: 12px; pointer-events: auto; 
-            /* เพิ่มพื้นหลังจางๆ และขอบ เพื่อให้เห็นขอบเขตชัดเจน กันคนกดผิด */
-            background: rgba(0,0,0,0.4); 
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 5px 5px 0 0;
+            flex: 1; overflow-y: auto; padding: 8px; color: white; font-size: 13px; pointer-events: auto; 
+            /* สีขาวจางๆ ตามที่ขอ */
+            background: rgba(255, 255, 255, 0.15); 
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px 8px 0 0;
+            margin-bottom: 2px;
         }
-        /* เพิ่มขอบตัวหนังสือ (Text Stroke / Shadow) */
+        /* ขอบตัวหนังสือเพื่อให้เห็นชัดบนพื้นขาวจาง */
         #chatBox div {
             text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
         }
-        #chatInp { 
-            width: 100%; margin: 0; background: rgba(0,0,0,0.8); padding: 5px; pointer-events: auto; 
-            border-radius: 0 0 5px 5px;
-            border: 1px solid #444;
+        .chat-input-row {
+            display: flex; width: 100%; pointer-events: auto;
         }
+        #chatInp { 
+            flex: 1; margin: 0; background: rgba(0,0,0,0.8); padding: 8px; color: white;
+            border-radius: 0 0 0 8px; border: 1px solid #444; width: auto; max-width: none;
+        }
+        #chatSendBtn {
+            width: 60px; background: var(--gold); border: none; border-radius: 0 0 8px 0;
+            font-weight: bold; color: black; cursor: pointer;
+        }
+        #chatSendBtn:active { background: #e5c100; }
     </style>
 </head>
 <body>
@@ -167,7 +175,10 @@
         
         <div id="chatCon">
             <div id="chatBox"></div>
-            <input id="chatInp" type="text" placeholder="แชท..." onkeydown="sendC(event)">
+            <div class="chat-input-row">
+                <input id="chatInp" type="text" placeholder="แชท..." onkeydown="checkEnter(event)">
+                <button id="chatSendBtn" onclick="sendMsg()">ส่ง</button>
+            </div>
         </div>
 
         <div class="dock">
@@ -237,7 +248,19 @@
         });
 
         function spawn(t,c){ if(eng>=c) socket.emit('spawn_request', { roomId:rid, type:t }); }
-        function sendC(e){ if(e.key==='Enter'){ const i=document.getElementById('chatInp'); if(i.value) socket.emit('send_chat',{roomId:rid, msg:i.value}); i.value=''; } }
+        
+        // Chat Functions
+        function checkEnter(e) {
+            if(e.key === 'Enter') sendMsg();
+        }
+        function sendMsg() {
+            const inp = document.getElementById('chatInp');
+            if(inp.value.trim()) {
+                socket.emit('send_chat', { roomId: rid, msg: inp.value.trim() });
+                inp.value = '';
+                // Focus กลับไปที่ input หรือไม่ก็ได้ (บนมือถืออาจจะไม่ focus เพื่อไม่ให้ keyboard บัง)
+            }
+        }
         
         socket.on('chat_msg', d=>{
             const b=document.getElementById('chatBox');
