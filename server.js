@@ -14,18 +14,26 @@ const WORLD_W = 1600;
 const WORLD_H = 900;
 const MAX_ENERGY = 200;
 
+// Update Specs
 const SPECS = {
-    sword: { hp: 40, dmg: 5, range: 50, speed: 2.5, size: 30, cost: 20, atkRate: 800 },
-    bow:   { hp: 20, dmg: 4, range: 300, speed: 2.5, size: 30, cost: 40, atkRate: 1000 },
-    tank:  { hp: 120, dmg: 2, range: 50, speed: 1.2, size: 36, cost: 70, atkRate: 1200 },
-    mage:  { hp: 30, dmg: 10, range: 250, speed: 1.8, size: 30, cost: 100, atkRate: 1500 }
+    sword:    { hp: 40,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 800 },
+    bow:      { hp: 20,  dmg: 4,  range: 300, speed: 2.5, size: 30, cost: 50, atkRate: 900 }, // ปรับราคาเป็น 50
+    tank:     { hp: 120, dmg: 2,  range: 50,  speed: 1.2, size: 36, cost: 70, atkRate: 1200 },
+    mage:     { hp: 30,  dmg: 12, range: 250, speed: 1.8, size: 30, cost: 100, atkRate: 1500, type:'aoe', radius: 60 }, // Buff AoE
+    assassin: { hp: 25,  dmg: 8,  range: 40,  speed: 4.0, size: 25, cost: 50, atkRate: 600, special: 'jump' }, // ตัวล้วง
+    cannon:   { hp: 60,  dmg: 25, range: 400, speed: 1.5, size: 40, cost: 100, atkRate: 2000, type:'aoe', radius: 100 } // ปืนใหญ่ AoE
 };
 
 const BOT_SETTINGS = {
-    easy:   { regen: 0.1,  aggro: 0.02 }, // ขึ้นช้า, นานๆ ปล่อยที
-    normal: { regen: 0.2,  aggro: 0.05 }, // เท่าคน
-    hard:   { regen: 0.35, aggro: 0.1 }   // ขึ้นไว, ปล่อยรัว
+    easy:   { regen: 0.1,  aggro: 0.02 },
+    normal: { regen: 0.2,  aggro: 0.05 },
+    hard:   { regen: 0.35, aggro: 0.1 }
 };
+
+const COLORS = [
+    '#ff4757', '#2ed573', '#1e90ff', '#ffa502', '#3742fa', 
+    '#2f3542', '#8e44ad', '#e84393', '#00d2d3', '#fff200'
+];
 
 let rooms = {};
 
@@ -33,103 +41,186 @@ let rooms = {};
 setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
+        
+        // Cleanup เช็คห้องที่ไม่มีคนหรือจบไปนานแล้ว
+        if (room.players.length === 0) {
+            delete rooms[roomId];
+            continue;
+        }
+
         if (room.status === 'playing') {
             updateGame(room);
             
-            // ส่งข้อมูลให้ทุกคน (แยก Energy ของใครของมัน)
+            // ส่งข้อมูลให้ทุกคน
             room.players.forEach(player => {
                 if(player.isBot) return;
                 io.to(player.id).emit('world_update', {
                     b: room.bases,
-                    myEng: Math.floor(player.energy), // ส่ง Energy เฉพาะตัว
+                    myEng: Math.floor(player.energy),
                     u: room.units.map(u => ({
                         i: u.id, t: u.type, s: u.side, c: u.color,
                         x: Math.round(u.x), y: Math.round(u.y), h: u.hp,
                         act: u.action
                     })),
+                    proj: room.projectiles.map(p => ({
+                        x: Math.round(p.x), y: Math.round(p.y), t: p.type
+                    })),
                     fx: room.effects
                 });
             });
+            // Clear Effects เพื่อไม่ให้ข้อมูลค้างสะสม
             room.effects = [];
         }
     }
 }, 50);
 
 function updateGame(room) {
-    // 1. Regen Energy (ทุกคน รวมถึง Bot)
+    const now = Date.now();
+
+    // 1. Regen Energy & AI
     room.players.forEach(p => {
         if (p.energy < MAX_ENERGY) {
-            // ถ้าเป็น Bot ใช้ค่า Regen ตามระดับความยาก
             const rate = p.isBot ? BOT_SETTINGS[room.difficulty].regen : 0.2;
             p.energy += rate;
         }
-        
-        // 2. AI Logic (ถ้าเป็น Bot)
         if (p.isBot) runBotLogic(room, p);
     });
 
-    // 3. Physics & Combat
-    const units = room.units;
-    const now = Date.now();
-
-    for (let i = units.length - 1; i >= 0; i--) {
-        if (units[i].dead) units.splice(i, 1);
+    // 2. Physics & Logic Units
+    // ลบตัวตายออกจาก Array ทันทีเพื่อลด Memory
+    for (let i = room.units.length - 1; i >= 0; i--) {
+        if (room.units[i].dead) room.units.splice(i, 1);
     }
 
-    units.forEach(u => {
+    room.units.forEach(u => {
         u.action = 'idle';
         let target = null;
         let minDist = 999;
 
-        units.forEach(o => {
+        // หาเป้าหมายที่ใกล้ที่สุด
+        room.units.forEach(o => {
             if (o.side !== u.side && !o.dead) {
                 const dist = Math.hypot(u.x - o.x, u.y - o.y);
-                if (dist < u.range && dist < minDist) { minDist = dist; target = o; }
+                if (dist < minDist) { minDist = dist; target = o; }
             }
         });
 
-        const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
+        // Logic Assassin: วาร์ปถ้าเจอ Mage หรือ Bow
+        if (u.type === 'assassin' && target && !u.hasJumped && minDist < 300) {
+            if (target.type === 'bow' || target.type === 'mage' || target.type === 'cannon') {
+                const offset = u.side === 'left' ? 40 : -40;
+                u.x = target.x + offset; // วาร์ปไปหลัง
+                u.y = target.y;
+                u.hasJumped = true;
+                room.effects.push({ type: 'warp', x: u.x, y: u.y });
+            }
+        }
+
+        // เช็คการโจมตีฐาน
         const canHitBase = (u.side === 'left' && u.x >= WORLD_W - 250) || (u.side === 'right' && u.x <= 250);
+        
+        // ระยะโจมตี
+        const attackRange = SPECS[u.type].range;
+        const inRange = target && minDist <= attackRange;
 
         if (canHitBase) {
+            // ตีฐาน
             if (now - u.lastAttack > SPECS[u.type].atkRate) {
                 u.lastAttack = now;
                 u.action = 'attack';
                 const targetSide = u.side === 'left' ? 'right' : 'left';
                 room.bases[targetSide] -= u.dmg;
-                room.effects.push({ type: 'dmg', x: enemyBaseX, y: WORLD_H/2, val: u.dmg });
+                
+                const baseX = u.side === 'left' ? WORLD_W - 100 : 100;
+                room.effects.push({ type: 'dmg', x: baseX, y: WORLD_H/2, val: u.dmg });
+
                 if (room.bases[targetSide] <= 0) endGame(room, u.side);
             }
-        } else if (target) {
+        } else if (inRange) {
+            // ตีคน
             if (now - u.lastAttack > SPECS[u.type].atkRate) {
                 u.lastAttack = now;
                 u.action = 'attack';
-                target.hp -= u.dmg;
-                room.effects.push({ type: 'dmg', x: target.x, y: target.y, val: u.dmg });
-                if (target.hp <= 0) target.dead = true;
+
+                // ถ้าเป็นตัวยิงไกล/ปืนใหญ่ ให้ยิง Projectile
+                if (u.type === 'mage' || u.type === 'cannon') {
+                    spawnProjectile(room, u, target);
+                } else {
+                    // ตีระยะประชิด (Melee & Bow Hit-scan)
+                    target.hp -= u.dmg;
+                    room.effects.push({ type: 'dmg', x: target.x, y: target.y, val: u.dmg });
+                    if (target.hp <= 0) target.dead = true;
+                }
             }
         } else {
+            // เดิน
             const dir = u.side === 'left' ? 1 : -1;
             u.x += dir * u.speed;
             u.action = 'walk';
+            
+            // เดินเลี้ยงเลนกลาง
             const mid = WORLD_H / 2;
             if (u.y < mid - 100) u.y += 0.5;
             if (u.y > mid + 100) u.y -= 0.5;
         }
     });
+
+    // 3. Update Projectiles
+    updateProjectiles(room);
+}
+
+function spawnProjectile(room, owner, target) {
+    room.projectiles.push({
+        x: owner.x,
+        y: owner.y,
+        tx: target.x,
+        ty: target.y,
+        speed: owner.type === 'cannon' ? 15 : 12,
+        dmg: SPECS[owner.type].dmg,
+        radius: SPECS[owner.type].radius,
+        type: owner.type, // 'mage' or 'cannon'
+        side: owner.side
+    });
+}
+
+function updateProjectiles(room) {
+    for (let i = room.projectiles.length - 1; i >= 0; i--) {
+        const p = room.projectiles[i];
+        
+        // คำนวณทิศทาง
+        const dx = p.tx - p.x;
+        const dy = p.ty - p.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < p.speed) {
+            // ถึงเป้าหมาย -> ระเบิด AoE
+            room.units.forEach(u => {
+                if (u.side !== p.side && !u.dead) {
+                    const d = Math.hypot(u.x - p.tx, u.y - p.ty);
+                    if (d <= p.radius) {
+                        u.hp -= p.dmg;
+                        room.effects.push({ type: 'dmg', x: u.x, y: u.y, val: p.dmg });
+                        if (u.hp <= 0) u.dead = true;
+                    }
+                }
+            });
+            // Effect ระเบิด
+            room.effects.push({ type: 'aoe', x: p.tx, y: p.ty, r: p.radius, t: p.type });
+            room.projectiles.splice(i, 1);
+        } else {
+            // เคลื่อนที่
+            const angle = Math.atan2(dy, dx);
+            p.x += Math.cos(angle) * p.speed;
+            p.y += Math.sin(angle) * p.speed;
+        }
+    }
 }
 
 function runBotLogic(room, bot) {
-    // สุ่มปล่อยตามความดุ (Aggro)
     if (Math.random() < BOT_SETTINGS[room.difficulty].aggro) {
-        // AI จะพยายามแก้ทาง หรือสุ่มปล่อย
-        const types = ['sword', 'bow', 'tank', 'mage'];
-        
-        // กรองตัวที่เงินพอ
+        const types = ['sword', 'bow', 'tank', 'mage', 'assassin', 'cannon'];
         const affordable = types.filter(t => bot.energy >= SPECS[t].cost);
-        
         if (affordable.length > 0) {
-            // สุ่มเลือกตัวที่ซื้อไหว
             const type = affordable[Math.floor(Math.random() * affordable.length)];
             spawnUnit(room, bot, type);
         }
@@ -139,9 +230,10 @@ function runBotLogic(room, bot) {
 function spawnUnit(room, player, type) {
     if (player.energy < SPECS[type].cost) return;
     
-    player.energy -= SPECS[type].cost; // หัก Energy เจ้าของ
+    player.energy -= SPECS[type].cost;
     const batchId = Date.now() + Math.random();
     
+    // Spawn 5 ตัวเหมือนเดิม
     for (let i = 0; i < 5; i++) {
         room.units.push({
             id: `${batchId}_${i}`,
@@ -156,7 +248,8 @@ function spawnUnit(room, player, type) {
             speed: SPECS[type].speed,
             lastAttack: 0,
             dead: false,
-            action: 'idle'
+            action: 'idle',
+            hasJumped: false // สำหรับ Assassin
         });
     }
 }
@@ -164,11 +257,12 @@ function spawnUnit(room, player, type) {
 function endGame(room, winner) {
     room.status = 'finished';
     io.to(room.id).emit('game_over', { winner });
-    setTimeout(() => { delete rooms[room.id]; }, 5000);
+    setTimeout(() => { delete rooms[room.id]; }, 2000); // ลบห้องเร็วขึ้นเพื่อลดแลค
 }
 
 // --- SOCKET EVENTS ---
 io.on('connection', (socket) => {
+    
     socket.on('create_room', (data) => {
         const roomId = Math.random().toString(36).substr(2, 5).toUpperCase();
         const maxPlayers = data.mode === '2v2' ? 4 : 2;
@@ -181,13 +275,14 @@ io.on('connection', (socket) => {
             status: 'waiting',
             bases: { left: 1000, right: 1000 },
             units: [],
+            projectiles: [],
             effects: [],
             players: [{ 
                 id: socket.id, 
                 name: data.name, 
                 side: '', 
                 ready: false, 
-                color: '#3b82f6',
+                color: COLORS[0],
                 energy: 0,
                 isBot: false 
             }]
@@ -195,20 +290,17 @@ io.on('connection', (socket) => {
         
         socket.join(roomId);
         
-        // ถ้าเล่นกับบอท ให้สร้างบอทใส่ห้องทันที
         if (data.mode === 'bot') {
             const r = rooms[roomId];
             r.players[0].side = 'left';
             r.players[0].ready = true;
-            // สร้าง Bot Player
             r.players.push({
                 id: 'bot_1', name: 'AI Bot', side: 'right', ready: true, 
-                color: '#ef4444', energy: 0, isBot: true
+                color: '#ff0000', energy: 0, isBot: true
             });
-            
             r.status = 'playing';
             socket.emit('room_created', { roomId });
-            io.to(roomId).emit('start_game', { mode: 'bot' });
+            io.to(roomId).emit('start_game', { players: r.players });
         } else {
             socket.emit('room_created', { roomId });
             updateLobby(roomId);
@@ -220,12 +312,16 @@ io.on('connection', (socket) => {
         const r = rooms[code];
         
         if (r && r.status === 'waiting' && r.players.length < r.maxPlayers) {
+            // สุ่มสีที่ไม่ซ้ำเพื่อน
+            const usedColors = r.players.map(p => p.color);
+            const availColor = COLORS.find(c => !usedColors.includes(c)) || '#fff';
+
             r.players.push({ 
                 id: socket.id, 
                 name: data.name, 
                 side: '', 
                 ready: false, 
-                color: getRandomColor(),
+                color: availColor,
                 energy: 0,
                 isBot: false
             });
@@ -241,14 +337,25 @@ io.on('connection', (socket) => {
         const r = rooms[data.roomId];
         if(!r) return;
         const p = r.players.find(pl => pl.id === socket.id);
-        
-        // 2v2: ฝั่งละ 2 คน / 1v1: ฝั่งละ 1 คน
         const limit = r.mode === '2v2' ? 2 : 1;
         const currentCount = r.players.filter(pl => pl.side === data.side && pl.id !== socket.id).length;
         
         if(currentCount < limit && p) {
             p.side = data.side;
             p.ready = false;
+            updateLobby(data.roomId);
+        }
+    });
+
+    socket.on('select_color', (data) => {
+        const r = rooms[data.roomId];
+        if(!r) return;
+        
+        // เช็คว่าสีซ้ำคนอื่นไหม
+        const isTaken = r.players.some(pl => pl.color === data.color && pl.id !== socket.id);
+        if(!isTaken) {
+            const p = r.players.find(pl => pl.id === socket.id);
+            if(p) p.color = data.color;
             updateLobby(data.roomId);
         }
     });
@@ -261,14 +368,13 @@ io.on('connection', (socket) => {
         
         updateLobby(roomId);
 
-        // เริ่มเกมเมื่อทุกคนพร้อม และมีคนอยู่ทั้ง 2 ฝั่ง
         const allReady = r.players.every(pl => pl.ready && pl.side);
         const hasLeft = r.players.some(pl => pl.side === 'left');
         const hasRight = r.players.some(pl => pl.side === 'right');
         
         if (r.players.length >= 2 && allReady && hasLeft && hasRight) {
             r.status = 'playing';
-            io.to(roomId).emit('start_game', {});
+            io.to(roomId).emit('start_game', { players: r.players });
         }
     });
 
@@ -279,6 +385,16 @@ io.on('connection', (socket) => {
             if (p) spawnUnit(r, p, data.type);
         }
     });
+
+    socket.on('send_chat', (data) => {
+        const r = rooms[data.roomId];
+        if(r) {
+            const p = r.players.find(pl => pl.id === socket.id);
+            if(p) {
+                io.to(data.roomId).emit('chat_msg', { name: p.name, msg: data.msg, color: p.color });
+            }
+        }
+    });
     
     socket.on('disconnect', () => {
         for (const rid in rooms) {
@@ -286,8 +402,10 @@ io.on('connection', (socket) => {
             const idx = r.players.findIndex(p => p.id === socket.id);
             if(idx !== -1) {
                 r.players.splice(idx, 1);
-                if(r.players.length === 0 || r.status === 'playing') {
-                    io.to(rid).emit('error_msg', 'ผู้เล่นหลุดการเชื่อมต่อ');
+                if(r.players.length === 0) {
+                    delete rooms[rid];
+                } else if(r.status === 'playing') {
+                    io.to(rid).emit('error_msg', 'ผู้เล่นหลุดการเชื่อมต่อ - จบเกม');
                     delete rooms[rid];
                 } else {
                     updateLobby(rid);
@@ -298,12 +416,12 @@ io.on('connection', (socket) => {
 });
 
 function updateLobby(roomId) {
-    if(rooms[roomId]) io.to(roomId).emit('update_lobby', rooms[roomId].players);
-}
-
-function getRandomColor() {
-    const colors = ['#2ed573', '#eccc68', '#ff7f50', '#1e90ff', '#ff4757', '#a29bfe'];
-    return colors[Math.floor(Math.random() * colors.length)];
+    if(rooms[roomId]) {
+        io.to(roomId).emit('update_lobby', { 
+            players: rooms[roomId].players,
+            colors: COLORS 
+        });
+    }
 }
 
 const PORT = process.env.PORT || 3000;

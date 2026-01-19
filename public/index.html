@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Battle War: Ultimate</title>
+    <title>Battle War: Ultimate Update</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -15,7 +15,7 @@
         @keyframes popIn { 0% { transform: translate(-50%,-50%) scale(0); } 80% { transform: translate(-50%,-50%) scale(1.2); } 100% { transform: translate(-50%,-50%) scale(1); } }
         @keyframes floatUp { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-50px); opacity: 0; } }
         @keyframes walkAnim { 0% { transform: translate(-50%,-50%) rotate(-5deg); } 50% { transform: translate(-50%,-50%) rotate(5deg); } 100% { transform: translate(-50%,-50%) rotate(-5deg); } }
-        @keyframes attackAnim { 0% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-50%) scale(1.3); } 100% { transform: translate(-50%,-50%) scale(1); } }
+        @keyframes aoeExpand { 0% { transform: translate(-50%,-50%) scale(0); opacity: 0.8; } 100% { transform: translate(-50%,-50%) scale(1.5); opacity: 0; } }
 
         .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 20; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
         .active { display: flex !important; }
@@ -26,12 +26,18 @@
         .btn-gold { background: var(--gold); color: black; }
         .btn-gray { background: #444; color: #ccc; }
 
-        /* LOBBY 2v2 */
-        .lobby-box { width: 95%; max-width: 700px; background: #1a1a1a; padding: 20px; border-radius: 20px; border: 1px solid #333; }
+        /* LOBBY */
+        .lobby-box { width: 95%; max-width: 800px; background: #1a1a1a; padding: 20px; border-radius: 20px; border: 1px solid #333; }
         .team-container { display: flex; gap: 10px; margin-top: 15px; min-height: 200px; }
         .team-col { flex: 1; background: rgba(0,0,0,0.3); border: 2px dashed #444; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; align-items: center; }
-        .player-card { width: 100%; background: #333; padding: 10px; border-radius: 8px; margin-bottom: 5px; font-size: 0.9rem; display: flex; justify-content: space-between; border-left: 4px solid #fff; }
+        .player-card { width: 100%; background: #333; padding: 10px; border-radius: 8px; margin-bottom: 5px; font-size: 0.9rem; display: flex; justify-content: space-between; border-left: 6px solid #fff; }
         
+        .color-palette { display: flex; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; justify-content: center; }
+        .color-dot { width: 30px; height: 30px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: 0.2s; }
+        .color-dot:hover { transform: scale(1.1); }
+        .color-dot.selected { border-color: white; transform: scale(1.2); }
+        .color-dot.disabled { opacity: 0.2; pointer-events: none; }
+
         /* GAME UI */
         #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 1; background: #050505; }
         #world { position: absolute; top: 0; left: 0; width: 1600px; height: 900px; background: radial-gradient(#1a1a1a 10%, #000 90%); border: 5px solid #333; }
@@ -39,6 +45,7 @@
         .base { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; text-align: center; font-size: 4rem; filter: drop-shadow(0 0 15px rgba(0,0,0,0.5)); }
         .hp-bar-con { width: 100px; height: 8px; background: #333; border: 1px solid #555; margin-top: 5px; border-radius: 4px; position: relative; left: 50%; transform: translateX(-50%); overflow: hidden; }
         .hp-fill { height: 100%; width: 100%; transition: width 0.3s; }
+        .team-names { font-size: 1rem; color: #aaa; margin-bottom: 5px; text-shadow: 1px 1px 0 #000; font-weight: bold; white-space: nowrap; }
 
         .unit { 
             position: absolute; width: 30px; height: 30px; border-radius: 50%; 
@@ -49,7 +56,20 @@
             animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
         .unit.walk { animation: walkAnim 0.5s infinite linear; }
-        .unit.attack { animation: attackAnim 0.3s infinite; }
+        
+        .proj {
+            position: absolute; width: 12px; height: 12px; border-radius: 50%;
+            background: black; border: 2px solid white; z-index: 15;
+            transform: translate(-50%, -50%);
+        }
+        .proj.mage { background: #a29bfe; box-shadow: 0 0 10px #a29bfe; }
+        .proj.cannon { width: 16px; height: 16px; background: #333; }
+
+        .aoe-fx {
+            position: absolute; border-radius: 50%; border: 2px solid white;
+            background: rgba(255,255,255,0.3); z-index: 12;
+            animation: aoeExpand 0.4s forwards;
+        }
 
         .dmg-text {
             position: absolute; color: #ff4757; font-weight: bold; font-size: 1.2rem;
@@ -62,37 +82,41 @@
         
         .dock {
             position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 8px; z-index: 30; width: 95%; max-width: 500px;
+            display: flex; gap: 8px; z-index: 30; width: 95%; max-width: 600px;
             justify-content: center;
         }
         .card {
-            flex: 1; height: 80px; background: #222; border: 2px solid #444; border-radius: 12px;
+            flex: 1; height: 70px; background: #222; border: 2px solid #444; border-radius: 12px;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             position: relative; transition: 0.1s; cursor: pointer; user-select: none;
         }
         .card:active { transform: scale(0.95); border-color: var(--gold); }
         .card.disabled { opacity: 0.5; filter: grayscale(1); pointer-events: none; }
-        .card-icon { font-size: 1.8rem; margin-bottom: -5px; }
-        .card-cost { font-size: 0.8rem; font-weight: bold; color: var(--gold); background: #000; padding: 2px 6px; border-radius: 10px; margin-top: 2px; }
+        .card-icon { font-size: 1.5rem; margin-bottom: -2px; }
+        .card-cost { font-size: 0.7rem; font-weight: bold; color: var(--gold); background: #000; padding: 2px 6px; border-radius: 10px; }
         
+        /* Chat */
+        #chatCon { position: absolute; bottom: 100px; left: 20px; width: 300px; height: 200px; z-index: 40; pointer-events: auto; display: flex; flex-direction: column; }
+        #chatBox { flex: 1; overflow-y: auto; background: rgba(0,0,0,0.5); border-radius: 10px 10px 0 0; padding: 10px; color: white; font-size: 0.9rem; text-shadow: 1px 1px 0 #000; }
+        #chatInput { width: 100%; margin: 0; border-radius: 0 0 10px 10px; background: rgba(0,0,0,0.7); text-align: left; padding: 8px; }
+
         #msgBox { color: var(--red); margin-top: 10px; font-size: 0.9rem; min-height: 20px; }
-        #botOptions { display: none; width: 100%; flex-direction: column; align-items: center; }
     </style>
 </head>
 <body>
 
     <div id="menuScreen" class="screen active">
         <h1 style="color:var(--gold); font-size:3rem; text-shadow:0 0 10px rgba(255,215,0,0.3);">BATTLE WAR</h1>
-        <p style="color:#888; margin-bottom:20px;">2v2 & AI Update</p>
+        <p style="color:#888; margin-bottom:20px;">Ultimate Update</p>
         
-        <input type="text" id="playerName" placeholder="ตั้งชื่อของคุณ" maxlength="10">
+        <input type="text" id="playerName" placeholder="ตั้งชื่อของคุณ" maxlength="12">
         <select id="gameMode" onchange="toggleBotOpt()">
             <option value="1v1">1 vs 1 (Online)</option>
             <option value="2v2">2 vs 2 (Online)</option>
             <option value="bot">Play vs Bot</option>
         </select>
         
-        <div id="botOptions">
+        <div id="botOptions" style="display:none; width:100%; flex-direction:column; align-items:center;">
             <select id="botDiff">
                 <option value="easy">Bot: Easy (ง่าย)</option>
                 <option value="normal" selected>Bot: Normal (ปานกลาง)</option>
@@ -114,6 +138,11 @@
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <h2 id="lobbyTitle" style="color:white;">Room: ...</h2>
                 <button class="btn btn-gray" style="padding:5px 15px; font-size:0.8rem;" onclick="location.reload()">ออก</button>
+            </div>
+
+            <div style="margin: 15px 0;">
+                <p style="margin-bottom:5px; color:#aaa;">เลือกสีของคุณ:</p>
+                <div id="colorPalette" class="color-palette"></div>
             </div>
             
             <div class="team-container">
@@ -140,26 +169,45 @@
     <div id="gameScreen" class="screen" style="background:black;">
         <div id="viewport">
             <div id="world">
-                <div class="base" style="left: 100px;">🏰<div class="hp-bar-con"><div id="hpLeft" class="hp-fill" style="background:#3b82f6;"></div></div></div>
-                <div class="base" style="right: 100px;">🏰<div class="hp-bar-con"><div id="hpRight" class="hp-fill" style="background:#ef4444;"></div></div></div>
+                <div class="base" style="left: 100px;">
+                    <div id="nameLeft" class="team-names">Team Left</div>
+                    🏰
+                    <div class="hp-bar-con"><div id="hpLeft" class="hp-fill" style="background:#3b82f6;"></div></div>
+                </div>
+                <div class="base" style="right: 100px;">
+                    <div id="nameRight" class="team-names">Team Right</div>
+                    🏰
+                    <div class="hp-bar-con"><div id="hpRight" class="hp-fill" style="background:#ef4444;"></div></div>
+                </div>
+                
                 <div id="unitsLayer"></div>
                 <div id="fxLayer"></div>
             </div>
         </div>
+
         <div class="hud-top">
             <div class="energy-badge">⚡ <span id="energyVal">0</span></div>
         </div>
+
+        <div id="chatCon">
+            <div id="chatBox"></div>
+            <input type="text" id="chatInput" placeholder="พิมพ์ข้อความ..." onkeydown="sendChat(event)">
+        </div>
+
         <div class="dock">
             <div class="card" onclick="spawn('sword', 20)"><div class="card-icon">⚔️</div><div class="card-cost">20</div></div>
-            <div class="card" onclick="spawn('bow', 40)"><div class="card-icon">🏹</div><div class="card-cost">40</div></div>
+            <div class="card" onclick="spawn('bow', 50)"><div class="card-icon">🏹</div><div class="card-cost">50</div></div>
+            <div class="card" onclick="spawn('assassin', 50)"><div class="card-icon">🥷</div><div class="card-cost">50</div></div>
             <div class="card" onclick="spawn('tank', 70)"><div class="card-icon">🛡️</div><div class="card-cost">70</div></div>
             <div class="card" onclick="spawn('mage', 100)"><div class="card-icon">🔮</div><div class="card-cost">100</div></div>
+            <div class="card" onclick="spawn('cannon', 100)"><div class="card-icon">💣</div><div class="card-cost">100</div></div>
         </div>
     </div>
 
     <script>
         const socket = io();
         let mySide = null;
+        let myColor = '';
         let roomId = null;
         let energy = 0;
 
@@ -182,27 +230,24 @@
             socket.emit('join_room', { roomId: code, name });
         }
 
-        socket.on('join_success', (data) => {
-            roomId = data.roomId;
-            enterLobby();
-        });
-
-        socket.on('room_created', (data) => {
-            roomId = data.roomId;
-            enterLobby();
-        });
-
+        socket.on('join_success', (data) => { roomId = data.roomId; enterLobby(); });
+        socket.on('room_created', (data) => { roomId = data.roomId; enterLobby(); });
         socket.on('error_msg', (msg) => document.getElementById('msgBox').innerText = msg);
 
-        socket.on('update_lobby', (players) => {
+        // --- LOBBY LOGIC ---
+        socket.on('update_lobby', (data) => {
             document.getElementById('lobbyTitle').innerText = `Room: ${roomId}`;
+            const players = data.players;
+            const colors = data.colors;
+            
             const l = document.getElementById('listLeft');
             const r = document.getElementById('listRight');
             l.innerHTML=''; r.innerHTML='';
 
             const me = players.find(p => p.id === socket.id);
-            if(me) mySide = me.side;
+            if(me) { mySide = me.side; myColor = me.color; }
 
+            // Render Players
             players.forEach(p => {
                 const div = document.createElement('div');
                 div.className = 'player-card';
@@ -210,6 +255,23 @@
                 div.innerHTML = `<span>${p.name}</span> <span>${p.ready ? '✅' : '...'}</span>`;
                 if(p.side === 'left') l.appendChild(div);
                 else if(p.side === 'right') r.appendChild(div);
+            });
+
+            // Render Color Picker
+            const pal = document.getElementById('colorPalette');
+            pal.innerHTML = '';
+            colors.forEach(c => {
+                const dot = document.createElement('div');
+                dot.className = 'color-dot';
+                dot.style.background = c;
+                
+                // เช็คว่าสีนี้มีคนใช้ยัง (ยกเว้นเรา)
+                const isTaken = players.some(p => p.color === c && p.id !== socket.id);
+                if(isTaken) dot.classList.add('disabled');
+                if(me && me.color === c) dot.classList.add('selected');
+                
+                dot.onclick = () => socket.emit('select_color', { roomId, color: c });
+                pal.appendChild(dot);
             });
 
             if(me) {
@@ -221,16 +283,23 @@
 
         function switchSide(s) { socket.emit('select_side', { roomId, side: s }); }
         function toggleReady() { socket.emit('toggle_ready', roomId); }
-        
         function enterLobby() {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.getElementById('lobbyScreen').classList.add('active');
         }
 
-        socket.on('start_game', () => {
+        // --- GAME LOGIC ---
+        socket.on('start_game', (data) => {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.getElementById('gameScreen').style.display = 'block';
             
+            // Set Player Names
+            const leftNames = data.players.filter(p=>p.side==='left').map(p=>p.name).join(', ');
+            const rightNames = data.players.filter(p=>p.side==='right').map(p=>p.name).join(', ');
+            document.getElementById('nameLeft').innerText = leftNames;
+            document.getElementById('nameRight').innerText = rightNames;
+
+            // Camera Setup
             const vp = document.getElementById('viewport');
             let startX = mySide === 'right' ? -(1600 - vp.clientWidth) : 0;
             initCamera(startX, -(900 - vp.clientHeight)/2);
@@ -240,12 +309,31 @@
             if(energy >= cost) socket.emit('spawn_request', { roomId, type });
         }
 
-        const ICONS = { sword: '⚔️', bow: '🏹', tank: '🛡️', mage: '🔮' };
+        function sendChat(e) {
+            if(e.key === 'Enter') {
+                const inp = document.getElementById('chatInput');
+                if(inp.value.trim()) {
+                    socket.emit('send_chat', { roomId, msg: inp.value.trim() });
+                    inp.value = '';
+                }
+            }
+        }
+
+        socket.on('chat_msg', (data) => {
+            const box = document.getElementById('chatBox');
+            const p = document.createElement('div');
+            p.innerHTML = `<span style="color:${data.color}; font-weight:bold;">${data.name}:</span> ${data.msg}`;
+            box.appendChild(p);
+            box.scrollTop = box.scrollHeight;
+        });
+
+        const ICONS = { sword: '⚔️', bow: '🏹', tank: '🛡️', mage: '🔮', assassin: '🥷', cannon: '💣' };
 
         socket.on('world_update', (data) => {
-            energy = data.myEng; // รับ Energy ส่วนตัว
+            energy = data.myEng;
             document.getElementById('energyVal').innerText = energy;
             
+            // Update Cards
             document.querySelectorAll('.card').forEach(c => {
                 const cost = parseInt(c.querySelector('.card-cost').innerText);
                 if(energy < cost) c.classList.add('disabled'); else c.classList.remove('disabled');
@@ -255,8 +343,10 @@
             document.getElementById('hpRight').style.width = (data.b.right/10) + '%';
 
             const layer = document.getElementById('unitsLayer');
+            const fxL = document.getElementById('fxLayer');
             const activeIds = new Set();
 
+            // Render Units
             data.u.forEach(u => {
                 activeIds.add(u.i);
                 let el = document.getElementById(u.i);
@@ -272,21 +362,47 @@
                 }
                 el.style.left = u.x + 'px';
                 el.style.top = u.y + 'px';
-                el.className = `unit ${u.act}`;
             });
 
+            // Cleanup Units
             Array.from(layer.children).forEach(el => {
-                if(!activeIds.has(el.id)) el.remove();
+                if(el.classList.contains('unit') && !activeIds.has(el.id)) el.remove();
             });
 
+            // Render Projectiles (ล้างและวาดใหม่ทุกเฟรม ง่ายกว่า sync ID)
+            const oldProjs = document.querySelectorAll('.proj');
+            oldProjs.forEach(p => p.remove());
+            
+            if(data.proj) {
+                data.proj.forEach(p => {
+                    const el = document.createElement('div');
+                    el.className = `proj ${p.t}`;
+                    el.style.left = p.x + 'px';
+                    el.style.top = p.y + 'px';
+                    fxL.appendChild(el);
+                });
+            }
+
+            // Render Effects
             if(data.fx) {
-                const fxL = document.getElementById('fxLayer');
                 data.fx.forEach(f => {
                     if(f.type==='dmg') {
                         const t = document.createElement('div');
                         t.className = 'dmg-text'; t.innerText = `-${f.val}`;
                         t.style.left = f.x+'px'; t.style.top = (f.y-20)+'px';
                         fxL.appendChild(t); setTimeout(()=>t.remove(),800);
+                    } else if (f.type==='aoe') {
+                        const c = document.createElement('div');
+                        c.className = 'aoe-fx';
+                        c.style.left = f.x+'px'; c.style.top = f.y+'px';
+                        c.style.width = (f.r*2)+'px'; c.style.height = (f.r*2)+'px';
+                        fxL.appendChild(c); setTimeout(()=>c.remove(),400);
+                    } else if (f.type==='warp') {
+                        // Effect วาร์ปง่ายๆ
+                        const t = document.createElement('div');
+                        t.innerText = "💨"; t.style.position="absolute";
+                        t.style.left = f.x+'px'; t.style.top = f.y+'px'; t.style.fontSize="20px";
+                        fxL.appendChild(t); setTimeout(()=>t.remove(), 500);
                     }
                 });
             }
@@ -297,6 +413,7 @@
             location.reload();
         });
 
+        // Touch/Mouse Camera logic
         function initCamera(ix, iy) {
             const vp = document.getElementById('viewport');
             const world = document.getElementById('world');
@@ -306,10 +423,12 @@
             const update = () => world.style.transform = `translate(${x}px, ${y}px)`;
             update();
 
-            const start = (e) => { isDrag=true; const t=e.touches?e.touches[0]:e; startX=t.pageX-x; startY=t.pageY-y; };
+            const start = (e) => { 
+                if(e.target.closest('.card') || e.target.closest('#chatCon')) return; // ignore UI touches
+                isDrag=true; const t=e.touches?e.touches[0]:e; startX=t.pageX-x; startY=t.pageY-y; 
+            };
             const move = (e) => {
                 if(!isDrag) return;
-                e.preventDefault();
                 const t=e.touches?e.touches[0]:e;
                 x=t.pageX-startX; y=t.pageY-startY;
                 const minX = -(1600 - vp.clientWidth);
