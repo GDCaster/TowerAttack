@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Battle War: Optimized</title>
+    <title>Battle War: Tank & Upgrade</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        :root { --bg: #0a0a0a; --gold: #FFD700; }
+        :root { --bg: #0a0a0a; --gold: #FFD700; --red: #ff4757; }
         * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
         body { background: var(--bg); color: white; font-family: 'Kanit', sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
         
@@ -16,6 +16,8 @@
         @keyframes expand { 0% { transform: translate(-50%,-50%) scale(0); opacity: 0.8; } 100% { transform: translate(-50%,-50%) scale(2); opacity: 0; } }
         @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
         @keyframes spinScope { 0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); } 50% { transform: translate(-50%, -50%) rotate(180deg) scale(0.8); } 100% { transform: translate(-50%, -50%) rotate(360deg) scale(1); } }
+        /* Stun Animation */
+        @keyframes stunnedAnim { 0% { filter: brightness(1) sepia(0); } 50% { filter: brightness(0.5) sepia(1) hue-rotate(200deg); } 100% { filter: brightness(1) sepia(0); } }
 
         .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 50; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
         .active { display: flex !important; }
@@ -53,12 +55,12 @@
             transform: translate(-50%, -50%); z-index: 10; display: flex; 
             justify-content: center; align-items: center; border: 2px solid white;
             font-size: 16px; 
-            /* FIX LAG: ใช้ Transition เพื่อให้ลื่นไหล */
             transition: left 0.15s linear, top 0.15s linear; 
         }
         .unit.walk { animation: walkAnim 0.5s infinite linear; }
         .unit.attack { animation: atkAnim 0.2s linear; }
-        /* ซ่อนชื่อทหารในหน้าจอเล่นเพื่อประหยัดเน็ต */
+        .unit.stun { animation: stunnedAnim 1s infinite; }
+        .unit.stun::after { content: '💫'; position: absolute; top: -15px; font-size: 14px; }
         .u-name { display: none; }
 
         .hp-bar { width: 80px; height: 6px; background: #333; margin: 0 auto; border-radius: 3px; overflow: hidden; }
@@ -67,7 +69,6 @@
         .proj { 
             position: absolute; width: 12px; height: 12px; border-radius: 50%; background: white; z-index: 12; 
             transform: translate(-50%,-50%); border: 2px solid black; 
-            /* FIX SMOOTH PROJ */
             transition: left 0.15s linear, top 0.15s linear;
         }
         .proj.mage { background: #a29bfe; box-shadow: 0 0 8px #a29bfe; }
@@ -76,6 +77,7 @@
         
         .aoe { position: absolute; border: 2px solid white; background: rgba(255,255,255,0.2); border-radius: 50%; z-index: 11; animation: expand 0.4s forwards; }
         .aoe.healer { border-color: #2ed573; background: rgba(46, 213, 115, 0.2); }
+        .aoe.impact { border-color: #ffa502; background: rgba(255, 165, 2, 0.3); animation: expand 0.25s forwards; }
 
         .aim-scope {
             position: absolute; width: 40px; height: 40px;
@@ -94,10 +96,9 @@
         .dmg { position: absolute; color: #ff4757; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
         .heal-text { position: absolute; color: #2ed573; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
 
-        /* ปรับตำแหน่ง Energy ให้สูงขึ้นอีกเพื่อไม่ให้บังการ์ดแถวบน */
         .hud-bottom { 
             position: absolute; 
-            bottom: 220px; /* แก้ไข: ดันขึ้นจาก 120px เป็น 220px */
+            bottom: 220px; 
             right: 10px; 
             width: auto; 
             text-align: right; 
@@ -124,6 +125,11 @@
         .c-icon { font-size: 22px; line-height: 1; margin-bottom: 2px; }
         .c-cost { font-size: 10px; color: var(--gold); background: black; padding: 1px 5px; border-radius: 8px; }
         .c-limit { font-size: 10px; color: #fff; margin-top: 2px; background: rgba(0,0,0,0.5); border-radius:4px; padding:0 2px; }
+
+        /* Upgrade Card Style */
+        .card.upgrade { border-color: #3b82f6; background: #1a202c; }
+        .card.upgrade .c-cost { color: #3b82f6; }
+        .upgrade-lv { position: absolute; top: 2px; right: 2px; font-size: 10px; color: white; font-weight: bold; background: #3b82f6; border-radius: 50%; width: 15px; height: 15px; text-align: center; line-height: 15px; }
 
         .cd-overlay { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: rgba(0, 0, 0, 0.7); z-index: 10; pointer-events: none; }
         .card.cooldown-active { pointer-events: none; }
@@ -227,11 +233,18 @@
         <div class="hud-bottom"><div class="energy">⚡ <span id="eng">0</span>/300</div></div>
         
         <div class="dock">
+            <div id="card-upgrade" class="card upgrade" onclick="upgradeEnergy()">
+                <div id="upg-lv" class="upgrade-lv">0</div>
+                <span class="c-icon">🔋</span>
+                <span id="upg-cost" class="c-cost">50</span>
+                <span class="c-limit">UP</span>
+            </div>
+            
             <div id="card-sword" class="card" onclick="spawn('sword',20)"><span class="c-icon">⚔️</span><span class="c-cost">20</span><span class="c-limit" id="lim-sword">0/20</span><div class="cd-overlay"></div></div>
             <div id="card-bow" class="card" onclick="spawn('bow',45)"><span class="c-icon">🏹</span><span class="c-cost">45</span><span class="c-limit" id="lim-bow">0/15</span><div class="cd-overlay"></div></div>
-            <div id="card-assassin" class="card" onclick="spawn('assassin',80)"><span class="c-icon">🥷</span><span class="c-cost">80</span><span class="c-limit" id="lim-assassin">0/15</span><div class="cd-overlay"></div></div>
-            <div id="card-tank" class="card" onclick="spawn('tank',75)"><span class="c-icon">🛡️</span><span class="c-cost">75</span><span class="c-limit" id="lim-tank">0/15</span><div class="cd-overlay"></div></div>
+            <div id="card-tank" class="card" onclick="spawn('tank',100)"><span class="c-icon">🛡️</span><span class="c-cost">100</span><span class="c-limit" id="lim-tank">0/15</span><div class="cd-overlay"></div></div>
             <div id="card-healer" class="card" onclick="spawn('healer',50)"><span class="c-icon">⚕️</span><span class="c-cost">50</span><span class="c-limit" id="lim-healer">0/15</span><div class="cd-overlay"></div></div>
+            <div id="card-assassin" class="card" onclick="spawn('assassin',80)"><span class="c-icon">🥷</span><span class="c-cost">80</span><span class="c-limit" id="lim-assassin">0/15</span><div class="cd-overlay"></div></div>
             <div id="card-mage" class="card" onclick="spawn('mage',125)"><span class="c-icon">🔮</span><span class="c-cost">125</span><span class="c-limit" id="lim-mage">0/20</span><div class="cd-overlay"></div></div>
             <div id="card-sniper" class="card" onclick="spawn('sniper',125)"><span class="c-icon">🔫</span><span class="c-cost">125</span><span class="c-limit" id="lim-sniper">0/10</span><div class="cd-overlay"></div></div>
             <div id="card-cannon" class="card" onclick="spawn('cannon',205)"><span class="c-icon">💣</span><span class="c-cost">205</span><span class="c-limit" id="lim-cannon">0/15</span><div class="cd-overlay"></div></div>
@@ -240,14 +253,15 @@
 
     <script>
         const socket = io();
-        let rid=null, mySide=null, eng=0;
+        let rid=null, mySide=null, eng=0, myLvl=0;
         let timerInterval = null;
         let lastCastTime = 0; 
 
         const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️', sniper:'🔫' };
         
-        // *** LIMITS CONFIG ***
+        // LIMITS CONFIG
         const LIMITS = { sword:20, bow:15, tank:15, mage:20, assassin:15, cannon:15, healer:15, sniper:10 };
+        const UPGRADE_COSTS = [50, 100, 150, 250, 400, 'MAX'];
 
         // --- MENU & LOBBY ---
         function toggleBot(){ document.getElementById('botOpt').style.display = document.getElementById('gMode').value==='bot'?'block':'none'; }
@@ -338,7 +352,6 @@
             if(cur >= max) return; 
 
             if(eng >= c && !cardEl.classList.contains('cooldown-active')) { 
-                
                 eng -= c; 
                 document.getElementById('eng').innerText = Math.floor(eng);
                 lastCastTime = Date.now(); 
@@ -349,6 +362,15 @@
                 cardEl.classList.add('cooldown-anim'); 
                 setTimeout(() => { cardEl.classList.remove('cooldown-active', 'cooldown-anim'); }, 3000);
             } 
+        }
+
+        function upgradeEnergy() {
+            if (myLvl >= 5) return;
+            const cost = UPGRADE_COSTS[myLvl];
+            if (eng >= cost) {
+                eng -= cost;
+                socket.emit('upgrade_energy', { roomId: rid });
+            }
         }
         
         function checkEnter(e) { if(e.key === 'Enter') sendMsg(); }
@@ -369,24 +391,35 @@
         socket.on('world_update', d=>{
             const now = Date.now();
             
-            // Energy Sync
+            // Energy & Level Sync
+            myLvl = d.myLvl;
             if (now - lastCastTime < 600 && d.myEng > eng) {
-                eng += 0.2; 
+                eng += (0.15 + (myLvl*0.05)); // Client prediction regen
             } else {
                 eng = d.myEng; 
             }
-            // *** FIX: ตัดทศนิยมออก ***
-            document.getElementById('eng').innerText = Math.floor(eng); 
+            document.getElementById('eng').innerText = Math.floor(eng);
             
+            // Update Upgrade UI
+            document.getElementById('upg-lv').innerText = myLvl;
+            const upgCostEl = document.getElementById('upg-cost');
+            const upgCard = document.getElementById('card-upgrade');
+            
+            if (myLvl >= 5) {
+                upgCostEl.innerText = "MAX";
+                upgCard.classList.add('disabled');
+            } else {
+                const cost = UPGRADE_COSTS[myLvl];
+                upgCostEl.innerText = cost;
+                if (eng < cost) upgCard.classList.add('disabled'); else upgCard.classList.remove('disabled');
+            }
+
             const myCounts = {};
             const exist = new Set();
-            
             const uL = document.getElementById('uLayer');
             const fxL = document.getElementById('fxLayer');
 
-            // *** OPTIMIZATION: รับข้อมูลแบบ Array ***
             d.u.forEach(data => {
-                // unpack array: [id, type, side, x, y, hp, action, aimTarget, color]
                 const u = { 
                     i: data[0], t: data[1], s: data[2], 
                     x: data[3], y: data[4], h: data[5], 
@@ -409,9 +442,12 @@
                 
                 el.style.left = u.x+'px'; el.style.top = u.y+'px';
                 
-                el.classList.remove('walk', 'attack');
+                // Clear all states
+                el.classList.remove('walk', 'attack', 'stun');
+                
                 if(u.act === 'walk') el.classList.add('walk');
                 else if(u.act === 'attack') el.classList.add('attack');
+                else if(u.act === 'stun') el.classList.add('stun');
 
                 // Scope Logic
                 if(u.aimTarget) {
@@ -438,7 +474,7 @@
             });
 
             // Update Cards (Limits)
-            document.querySelectorAll('.card').forEach(c=>{
+            document.querySelectorAll('.card:not(.upgrade)').forEach(c=>{
                 if (!c.classList.contains('cooldown-active')) {
                     const cost = parseInt(c.querySelector('.c-cost').innerText);
                     const type = c.id.replace('card-','');
@@ -454,16 +490,13 @@
             document.getElementById('hpR').style.width = (d.b.right/10)+'%';
 
             Array.from(uL.children).forEach(e=>{ if(!exist.has(e.id)) e.remove(); });
-            
             document.querySelectorAll('.aim-scope').forEach(scope => {
                 const sniperId = scope.id.replace('scope_', '');
                 if (!exist.has(sniperId)) scope.remove();
             });
 
-            // Projectiles (Array Format)
             document.querySelectorAll('.proj').forEach(e=>e.remove());
             d.proj.forEach(pData=>{
-                // [x, y, type]
                 const el = document.createElement('div'); el.className=`proj ${pData[2]}`;
                 el.style.left=pData[0]+'px'; el.style.top=pData[1]+'px';
                 fxL.appendChild(el);
@@ -483,6 +516,7 @@
                 else if(f.type==='aoe'){
                     const e=document.createElement('div'); e.className='aoe'; 
                     if(f.t === 'healer') e.classList.add('healer');
+                    if(f.t === 'impact') e.classList.add('impact'); // Tank Impact
                     e.style.left=f.x+'px'; e.style.top=f.y+'px';
                     e.style.width=(f.r*2)+'px'; e.style.height=(f.r*2)+'px';
                     if(f.t === 'assassin') e.style.borderColor = '#ff4757'; 
