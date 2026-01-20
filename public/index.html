@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Battle War: Sniper & Limits Update</title>
+    <title>Battle War: Assassin Fix & Limits</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -11,12 +11,10 @@
         * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
         body { background: var(--bg); color: white; font-family: 'Kanit', sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
         
-        @keyframes popIn { 0% { transform: translate(-50%,-50%) scale(0); } 80% { transform: translate(-50%,-50%) scale(1.2); } 100% { transform: translate(-50%,-50%) scale(1); } }
-        @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
-        @keyframes expand { 0% { transform: translate(-50%,-50%) scale(0); opacity: 0.8; } 100% { transform: translate(-50%,-50%) scale(2); opacity: 0; } }
-        
         @keyframes walkAnim { 0% { transform: translate(-50%,-50%) rotate(-5deg); } 50% { transform: translate(-50%,-50%) rotate(5deg); } 100% { transform: translate(-50%,-50%) rotate(-5deg); } }
         @keyframes atkAnim { 0% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-50%) scale(1.4); } 100% { transform: translate(-50%,-50%) scale(1); } }
+        @keyframes expand { 0% { transform: translate(-50%,-50%) scale(0); opacity: 0.8; } 100% { transform: translate(-50%,-50%) scale(2); opacity: 0; } }
+        @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
 
         .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 50; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
         .active { display: flex !important; }
@@ -65,7 +63,7 @@
         .proj { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: white; z-index: 12; transform: translate(-50%,-50%); border: 2px solid black; }
         .proj.mage { background: #a29bfe; box-shadow: 0 0 8px #a29bfe; }
         .proj.cannon { background: #333; width: 16px; height: 16px; }
-        .proj.sniper { background: #ffeb3b; width: 6px; height: 6px; box-shadow: 0 0 10px #ffeb3b; }
+        .proj.sniper { background: #ffff00; width: 8px; height: 8px; box-shadow: 0 0 10px #ffff00; border: none; }
         
         .aoe { position: absolute; border: 2px solid white; background: rgba(255,255,255,0.2); border-radius: 50%; z-index: 11; animation: expand 0.4s forwards; }
         .aoe.healer { border-color: #2ed573; background: rgba(46, 213, 115, 0.2); }
@@ -77,11 +75,12 @@
         .energy { background: rgba(0,0,0,0.8); color: var(--gold); padding: 5px 20px; border-radius: 20px; border: 1px solid var(--gold); font-size: 24px; font-weight: bold; display: inline-block; }
         
         .dock { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 100; width: 98%; max-width: 700px; justify-content: center; flex-wrap: wrap; }
-        .card { width: 60px; height: 65px; background: #222; border: 1px solid #444; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.1s; overflow: hidden; flex-shrink: 0; }
+        .card { width: 62px; height: 75px; background: #222; border: 1px solid #444; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.1s; overflow: hidden; flex-shrink: 0; }
         .card:active { transform: scale(0.95); border-color: var(--gold); }
         .card.disabled { opacity: 0.4; filter: grayscale(1); }
-        .c-icon { font-size: 20px; line-height: 1; }
-        .c-cost { font-size: 10px; color: var(--gold); background: black; padding: 1px 5px; border-radius: 8px; margin-top: 2px; }
+        .c-icon { font-size: 22px; line-height: 1; margin-bottom: 2px; }
+        .c-cost { font-size: 10px; color: var(--gold); background: black; padding: 1px 5px; border-radius: 8px; }
+        .c-limit { font-size: 9px; color: #aaa; margin-top: 2px; }
 
         .cd-overlay { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: rgba(0, 0, 0, 0.7); z-index: 10; pointer-events: none; }
         .card.cooldown-active { pointer-events: none; }
@@ -96,7 +95,6 @@
         #chatSendBtn { width: 60px; background: var(--gold); border: none; border-radius: 0 0 8px 0; font-weight: bold; color: black; cursor: pointer; }
         #chatSendBtn:active { background: #e5c100; }
 
-        #matchScreen { text-align: center; }
         .loader { width: 50px; height: 50px; border: 5px solid #333; border-top: 5px solid var(--gold); border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
@@ -105,7 +103,7 @@
 
     <div id="menuScreen" class="screen active">
         <h1 style="color:var(--gold); font-size:40px;">BATTLE WAR</h1>
-        <p style="color:#777; margin-bottom:20px;">Limit & Sniper Update</p>
+        <p style="color:#777; margin-bottom:20px;">Assassin & Limits Update</p>
         <input type="text" id="pName" placeholder="ชื่อตัวละคร" maxlength="10">
         
         <button class="btn btn-blue" style="width:80%; max-width:300px; padding:15px; font-size:20px;" onclick="startMatchmaking()">🔍 Auto Match (1v1)</button>
@@ -183,14 +181,14 @@
             </div>
         </div>
         <div class="dock">
-            <div id="card-sword" class="card" onclick="spawn('sword',20)"><span class="c-icon">⚔️</span><span class="c-cost">20</span><div class="cd-overlay"></div></div>
-            <div id="card-bow" class="card" onclick="spawn('bow',45)"><span class="c-icon">🏹</span><span class="c-cost">45</span><div class="cd-overlay"></div></div>
-            <div id="card-assassin" class="card" onclick="spawn('assassin',80)"><span class="c-icon">🥷</span><span class="c-cost">80</span><div class="cd-overlay"></div></div>
-            <div id="card-tank" class="card" onclick="spawn('tank',75)"><span class="c-icon">🛡️</span><span class="c-cost">75</span><div class="cd-overlay"></div></div>
-            <div id="card-healer" class="card" onclick="spawn('healer',50)"><span class="c-icon">⚕️</span><span class="c-cost">50</span><div class="cd-overlay"></div></div>
-            <div id="card-mage" class="card" onclick="spawn('mage',125)"><span class="c-icon">🔮</span><span class="c-cost">125</span><div class="cd-overlay"></div></div>
-            <div id="card-sniper" class="card" onclick="spawn('sniper',100)"><span class="c-icon">🔫</span><span class="c-cost">100</span><div class="cd-overlay"></div></div>
-            <div id="card-cannon" class="card" onclick="spawn('cannon',175)"><span class="c-icon">💣</span><span class="c-cost">175</span><div class="cd-overlay"></div></div>
+            <div id="card-sword" class="card" onclick="spawn('sword',20)"><span class="c-icon">⚔️</span><span class="c-cost">20</span><span class="c-limit" id="lim-sword">0/40</span><div class="cd-overlay"></div></div>
+            <div id="card-bow" class="card" onclick="spawn('bow',45)"><span class="c-icon">🏹</span><span class="c-cost">45</span><span class="c-limit" id="lim-bow">0/30</span><div class="cd-overlay"></div></div>
+            <div id="card-assassin" class="card" onclick="spawn('assassin',80)"><span class="c-icon">🥷</span><span class="c-cost">80</span><span class="c-limit" id="lim-assassin">0/40</span><div class="cd-overlay"></div></div>
+            <div id="card-tank" class="card" onclick="spawn('tank',75)"><span class="c-icon">🛡️</span><span class="c-cost">75</span><span class="c-limit" id="lim-tank">0/40</span><div class="cd-overlay"></div></div>
+            <div id="card-healer" class="card" onclick="spawn('healer',50)"><span class="c-icon">⚕️</span><span class="c-cost">50</span><span class="c-limit" id="lim-healer">0/30</span><div class="cd-overlay"></div></div>
+            <div id="card-mage" class="card" onclick="spawn('mage',125)"><span class="c-icon">🔮</span><span class="c-cost">125</span><span class="c-limit" id="lim-mage">0/30</span><div class="cd-overlay"></div></div>
+            <div id="card-sniper" class="card" onclick="spawn('sniper',100)"><span class="c-icon">🔫</span><span class="c-cost">100</span><span class="c-limit" id="lim-sniper">0/30</span><div class="cd-overlay"></div></div>
+            <div id="card-cannon" class="card" onclick="spawn('cannon',175)"><span class="c-icon">💣</span><span class="c-cost">175</span><span class="c-limit" id="lim-cannon">0/20</span><div class="cd-overlay"></div></div>
         </div>
     </div>
 
@@ -199,6 +197,9 @@
         let rid=null, mySide=null, eng=0;
         let timerInterval = null;
         const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️', sniper:'🔫' };
+        
+        // Match limits for display
+        const LIMITS = { sword:40, tank:40, assassin:40, bow:30, mage:30, healer:30, sniper:30, cannon:20 };
 
         // --- MENU & LOBBY ---
         function toggleBot(){ document.getElementById('botOpt').style.display = document.getElementById('gMode').value==='bot'?'block':'none'; }
@@ -281,9 +282,13 @@
         });
 
         function spawn(t,c){ 
-            const cardId = 'card-' + t;
-            const cardEl = document.getElementById(cardId);
+            const cardEl = document.getElementById('card-' + t);
+            const limEl = document.getElementById('lim-' + t);
             
+            // Check cooldown, energy, and limit (visually)
+            const [cur, max] = limEl.innerText.split('/').map(Number);
+            if(cur >= max) return; // Limit reached
+
             if(eng >= c && !cardEl.classList.contains('cooldown-active')) { 
                 socket.emit('spawn_request', { roomId:rid, type:t }); 
                 cardEl.classList.add('cooldown-active'); 
@@ -309,11 +314,34 @@
         });
 
         socket.on('world_update', d=>{
-            eng = d.myEng; document.getElementById('eng').innerText = eng;
+            eng = d.myEng; document.getElementById('eng').innerText = eng + "/300";
+            
+            // 1. Calculate Unit Counts
+            const myCounts = {};
+            d.u.forEach(u => {
+                if(u.s === mySide) {
+                    myCounts[u.t] = (myCounts[u.t] || 0) + 1;
+                }
+            });
+
+            // 2. Update Card UI (Cost & Limit)
             document.querySelectorAll('.card').forEach(c=>{
                 if (!c.classList.contains('cooldown-active')) {
                     const cost = parseInt(c.querySelector('.c-cost').innerText);
-                    if(eng<cost) c.classList.add('disabled'); else c.classList.remove('disabled');
+                    const type = c.id.replace('card-','');
+                    const curCount = myCounts[type] || 0;
+                    const maxCount = LIMITS[type];
+                    
+                    // Update text
+                    const limText = document.getElementById('lim-' + type);
+                    if(limText) limText.innerText = `${curCount}/${maxCount}`;
+
+                    // Disable if No Energy OR Limit Reached
+                    if(eng < cost || curCount >= maxCount) {
+                        c.classList.add('disabled');
+                    } else {
+                        c.classList.remove('disabled');
+                    }
                 }
             });
 
