@@ -17,8 +17,8 @@ const WORLD_H = 900;
 const MAX_ENERGY_LEVELS = [300, 450, 600, 800, 1000, 1500];
 
 // Upgrade Config
-const UPGRADE_COSTS = [50, 100, 150, 250, 400]; // ราคาอัปเกรด
-const REGEN_RATES = [0.15, 0.22, 0.30, 0.40, 0.55, 0.75]; // อัตราการเด้ง
+const UPGRADE_COSTS = [50, 100, 150, 250, 400];
+const REGEN_RATES = [0.15, 0.22, 0.30, 0.40, 0.55, 0.75];
 
 // *** LIMITS & SPECS CONFIG ***
 const SPECS = {
@@ -26,7 +26,7 @@ const SPECS = {
     bow:      { hp: 20,  dmg: 5,  range: 300, speed: 2.5, size: 30, cost: 45, atkRate: 1500, limit: 15, type: 'ranged' },
     tank:     { hp: 250, dmg: 2,  range: 50,  speed: 2.5, size: 36, cost: 100, atkRate: 2000, limit: 15, type: 'melee', 
                 chargeSpeed: 3.75, impactRadius: 50, stunDur: 500, knockback: 5 }, 
-    mage:     { hp: 25,  dmg: 15, range: 250, speed: 2.0, size: 30, cost: 125, atkRate: 1000, limit: 20, type: 'aoe', radius: 40, baseType: 'ranged' },
+    mage:     { hp: 25,  dmg: 15, range: 250, speed: 2.0, size: 30, cost: 125, atkRate: 1000, limit: 20, type: 'aoe', radius: 25, baseType: 'ranged' },
     assassin: { hp: 5,  dmg: 15,  range: 65,  speed: 6.0, size: 25, cost: 80, atkRate: 2000,  limit: 15, type: 'hybrid', radius: 75, jumpRange: 250, jumpCd: 7000 },
     cannon:   { hp: 60,  dmg: 20, range: 350, speed: 1.5, size: 40, cost: 205, atkRate: 4500, limit: 15, type: 'aoe', radius: 70, baseType: 'ranged' },
     healer:   { hp: 25,  dmg: 0,  range: 150, speed: 2.5, size: 28, cost: 50, atkRate: 3000, limit: 15, type: 'support', radius: 195, baseType: 'ranged' },
@@ -80,7 +80,9 @@ setInterval(() => {
                         u.hp,
                         u.isStunned ? 'stun' : u.action, 
                         u.aimTargetId || null, 
-                        u.color 
+                        u.color,
+                        // [NEW] ส่งสถานะโล่ Mage หรืออมตะไปให้ Client (ใช้ effect แทน หรือดูที่สี)
+                        (u.type === 'mage' && (u.mageShield || u.invincibleTime > Date.now())) ? 1 : 0 
                     ]),
                     proj: room.projectiles.map(p => [
                         Math.round(p.x), 
@@ -103,22 +105,65 @@ setInterval(() => {
     }
 }, 50);
 
+// [NEW] ฟังก์ชันจัดการ Damage กลาง (รองรับ Mage Shield)
+function applyDamage(room, unit, dmg, sourceX, sourceY) {
+    if (unit.dead) return;
+    const now = Date.now();
+
+    // --- MAGE DEFENSE MECHANIC ---
+    if (unit.type === 'mage') {
+        // ถ้าอยู่ในช่วงอมตะ
+        if (unit.invincibleTime && now < unit.invincibleTime) {
+            return; // ไม่โดนดาเมจ
+        }
+
+        // ถ้ามีโล่ (โดนครั้งแรก)
+        if (unit.mageShield) {
+            unit.mageShield = false;
+            unit.invincibleTime = now + 5000; // อมตะ 5 วินาที
+            
+            // Visual Effect: Block text
+            room.effects.push({ type: 'text', x: unit.x, y: unit.y, val: 'BLOCK', color: '#fff' });
+            
+            // Visual Effect: Explosion Ring
+            room.effects.push({ type: 'aoe', x: unit.x, y: unit.y, r: 75, t: 'mage_blast' });
+
+            // Logic: Stun ศัตรูรอบๆ 75 หน่วย เป็นเวลา 1 วินาที
+            room.units.forEach(e => {
+                if (e.side !== unit.side && !e.dead) {
+                    const dist = Math.hypot(unit.x - e.x, unit.y - e.y);
+                    if (dist <= 75) {
+                        e.stunEndTime = now + 1000;
+                        e.action = 'stun';
+                        // ผลักออกนิดหน่อย
+                        const angle = Math.atan2(e.y - unit.y, e.x - unit.x);
+                        e.x += Math.cos(angle) * 20;
+                        e.y += Math.sin(angle) * 20;
+                    }
+                }
+            });
+            return; // จบการทำงาน (ไม่โดนดาเมจครั้งนี้)
+        }
+    }
+
+    // Normal Damage
+    unit.hp -= dmg;
+    room.effects.push({ type: 'dmg', x: unit.x, y: unit.y, val: dmg });
+    if (unit.hp <= 0) unit.dead = true;
+}
+
 function updateGame(room) {
     const now = Date.now();
     
-    // [EDITED] Regen Energy System (Dynamic Max Energy)
+    // Regen Energy System
     room.players.forEach(p => {
-        // หาค่า Max Energy ตาม Level ของผู้เล่น
         const currentMaxEnergy = MAX_ENERGY_LEVELS[p.energyLevel] || MAX_ENERGY_LEVELS[MAX_ENERGY_LEVELS.length - 1];
-
         if (p.energy < currentMaxEnergy) {
             let rIndex = p.energyLevel;
             if(p.isBot) rIndex = BOT_SETTINGS[room.difficulty].regenIdx;
             
             const rate = REGEN_RATES[Math.min(rIndex, REGEN_RATES.length - 1)];
             p.energy += rate;
-            
-            // Cap ไม่ให้เกิน Max ปัจจุบัน
             if (p.energy > currentMaxEnergy) p.energy = currentMaxEnergy;
         }
         if (p.isBot) runBotLogic(room, p);
@@ -279,18 +324,13 @@ function updateGame(room) {
                         u.y = jumpTarget.y;
                         u.jumpReadyTime = now + SPECS.assassin.jumpCd;
                         
-                        // Warp Effect
                         room.effects.push({ type: 'warp', x: u.x, y: u.y });
-
-                        // [EDITED] AOE Damage Logic (ตวัดรอบตัว)
                         room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.assassin.radius, t: 'assassin' });
                         
                         room.units.forEach(e => {
-                            // เช็คศัตรูที่อยู่ในระยะ Radius
                             if (e.side !== u.side && !e.dead && Math.hypot(u.x - e.x, u.y - e.y) <= SPECS.assassin.radius) {
-                                e.hp -= 15; 
-                                room.effects.push({ type: 'dmg', x: e.x, y: e.y, val: 15 });
-                                if (e.hp <= 0) e.dead = true;
+                                // ใช้ applyDamage
+                                applyDamage(room, e, 15, u.x, u.y);
                             }
                         });
 
@@ -329,9 +369,8 @@ function updateGame(room) {
                 u.lastAttack = now; u.action = 'attack';
                 if (['mage', 'cannon', 'bow', 'sniper'].includes(u.type)) { spawnProjectile(room, u, target); } 
                 else {
-                    target.hp -= u.dmg;
-                    room.effects.push({ type: 'dmg', x: target.x, y: target.y, val: u.dmg });
-                    if (target.hp <= 0) target.dead = true;
+                    // ใช้ applyDamage สำหรับ Melee
+                    applyDamage(room, target, u.dmg, u.x, u.y);
                 }
             }
         } else {
@@ -386,18 +425,39 @@ function updateProjectiles(room) {
 
         if (dist < p.speed) {
             let hit = false;
-            room.units.forEach(u => {
-                if (u.side !== p.side && !u.dead) {
-                    const d = Math.hypot(u.x - p.tx, u.y - p.ty);
-                    const hitRange = p.type === 'sniper' ? 30 : p.radius; 
-                    if (d <= hitRange) {
-                        u.hp -= p.dmg; room.effects.push({ type: 'dmg', x: u.x, y: u.y, val: p.dmg });
-                        if (u.hp <= 0) u.dead = true;
-                        hit = true;
+            
+            // [EDITED] Sniper Logic: Single Target only
+            if (p.type === 'sniper') {
+                // หากระสุน Sniper ที่ชนยูนิต (หาตัวที่ใกล้ที่สุดในระยะ hit range)
+                let targets = [];
+                room.units.forEach(u => {
+                    if (u.side !== p.side && !u.dead) {
+                        const d = Math.hypot(u.x - p.tx, u.y - p.ty);
+                        if (d <= 30) { targets.push({ unit: u, dist: d }); }
                     }
-                }
-            });
+                });
 
+                if (targets.length > 0) {
+                    // เรียงตามระยะ หาตัวใกล้สุด
+                    targets.sort((a, b) => a.dist - b.dist);
+                    applyDamage(room, targets[0].unit, p.dmg, p.tx, p.ty);
+                    hit = true;
+                }
+
+            } else {
+                // กระสุนปกติ (อาจเป็น AoE หรือ Single)
+                room.units.forEach(u => {
+                    if (u.side !== p.side && !u.dead) {
+                        const d = Math.hypot(u.x - p.tx, u.y - p.ty);
+                        if (d <= p.radius) {
+                            applyDamage(room, u, p.dmg, p.tx, p.ty);
+                            hit = true;
+                        }
+                    }
+                });
+            }
+
+            // Sniper ยิงฐาน
             if (p.type === 'sniper' && !p.targetId && !hit) {
                  const enemyBaseX = p.side === 'left' ? WORLD_W - 100 : 100;
                  if (Math.abs(p.tx - enemyBaseX) < 50) {
@@ -408,8 +468,13 @@ function updateProjectiles(room) {
                  }
             }
 
-            if (p.type === 'mage' || p.type === 'cannon') { room.effects.push({ type: 'aoe', x: p.tx, y: p.ty, r: p.radius, t: p.type }); }
+            if (p.type === 'mage' || p.type === 'cannon') { 
+                room.effects.push({ type: 'aoe', x: p.tx, y: p.ty, r: p.radius, t: p.type }); 
+            }
+            
+            // ลบกระสุนทันทีเมื่อถึงเป้าหมาย
             room.projectiles.splice(i, 1);
+
         } else {
             const angle = Math.atan2(dy, dx);
             p.x += Math.cos(angle) * p.speed; p.y += Math.sin(angle) * p.speed;
@@ -456,7 +521,10 @@ function spawnUnit(room, player, type) {
             hp: SPECS[type].hp, dmg: SPECS[type].dmg, range: SPECS[type].range, speed: SPECS[type].speed, size: SPECS[type].size,
             lastAttack: 0, dead: false, action: 'idle', jumpReadyTime: 0, aiming: false, aimStartTime: 0, aimTargetId: null,
             charging: (type === 'tank'), 
-            stunEndTime: 0
+            stunEndTime: 0,
+            // [NEW] Mage Properties
+            mageShield: (type === 'mage'),
+            invincibleTime: 0
         };
         room.units.push(u);
     }
@@ -495,9 +563,21 @@ function checkMatchQueue() {
 
 io.on('connection', (socket) => {
     socket.on('create_room', (data) => {
-        const roomId = Math.random().toString(36).substr(2, 5).toUpperCase();
+        // [EDITED] Custom ID Check
+        let roomId;
+        if (data.customId && data.customId.trim() !== "") {
+            roomId = data.customId.trim().toUpperCase();
+            if (rooms[roomId]) {
+                socket.emit('error_msg', 'ชื่อห้องนี้มีคนใช้แล้ว (Room ID exists)');
+                return;
+            }
+        } else {
+            roomId = Math.random().toString(36).substr(2, 5).toUpperCase();
+        }
+
         rooms[roomId] = {
-            id: roomId, mode: data.mode, difficulty: data.difficulty || 'normal', maxPlayers: data.mode === '2v2' ? 4 : 2,
+            id: roomId, mode: data.mode, difficulty: data.difficulty || 'normal', 
+            maxPlayers: data.mode === '2v2' ? 4 : 2,
             status: 'waiting', bases: { left: 1000, right: 1000 }, units: [], projectiles: [], effects: [],
             players: [{ id: socket.id, name: data.name, side: '', ready: false, color: COLORS[0], energy: 0, energyLevel: 0, isBot: false, cooldowns: {} }]
         };
@@ -516,13 +596,16 @@ io.on('connection', (socket) => {
             const usedColors = r.players.map(p => p.color);
             r.players.push({ id: socket.id, name: data.name, side: '', ready: false, color: COLORS.find(c => !usedColors.includes(c)) || '#fff', energy: 0, energyLevel: 0, isBot: false, cooldowns: {} });
             socket.join(r.id); socket.emit('join_success', { roomId: r.id }); updateLobby(r.id);
-        } else { socket.emit('error_msg', 'Join failed'); }
+        } else { socket.emit('error_msg', 'เข้าร่วมไม่ได้ (ไม่พบห้อง หรือห้องเต็ม)'); }
     });
 
     socket.on('select_side', (d) => {
         const r = rooms[d.roomId]; if(!r || r.isAutoMatch) return;
         const p = r.players.find(x => x.id === socket.id);
-        const limit = r.mode === '2v2' ? 2 : 1;
+        
+        // [EDITED] Sandbox ไม่จำกัดจำนวนคนในฝั่ง
+        const limit = r.mode === '2v2' ? 2 : (r.mode === 'sandbox' ? 99 : 1);
+        
         if(p && r.players.filter(x => x.side === d.side).length < limit) { p.side = d.side; p.ready = false; updateLobby(d.roomId); }
     });
 
@@ -537,9 +620,20 @@ io.on('connection', (socket) => {
         const r = rooms[rid]; if(!r) return;
         const p = r.players.find(x => x.id === socket.id); if(p) p.ready = !p.ready;
         updateLobby(rid);
-        const hasL = r.players.some(x=>x.side==='left'), hasR = r.players.some(x=>x.side==='right');
-        if (r.players.length >= 2 && r.players.every(x => x.ready && x.side) && hasL && hasR) {
-            r.status = 'playing'; r.autoStartTimer = null; io.to(rid).emit('start_game', { players: r.players });
+        
+        const hasL = r.players.some(x=>x.side==='left');
+        const hasR = r.players.some(x=>x.side==='right');
+        
+        // [EDITED] Sandbox Start Logic (เริ่มได้เลยถ้า Ready แม้มีคนเดียว)
+        if (r.mode === 'sandbox') {
+             if (r.players.length > 0 && r.players.every(x => x.ready && x.side)) {
+                r.status = 'playing'; r.autoStartTimer = null; io.to(rid).emit('start_game', { players: r.players });
+             }
+        } else {
+            // Normal Logic
+            if (r.players.length >= 2 && r.players.every(x => x.ready && x.side) && hasL && hasR) {
+                r.status = 'playing'; r.autoStartTimer = null; io.to(rid).emit('start_game', { players: r.players });
+            }
         }
     });
 

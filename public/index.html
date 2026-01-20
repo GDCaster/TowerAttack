@@ -17,6 +17,9 @@
         @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
         @keyframes spinScope { 0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); } 50% { transform: translate(-50%, -50%) rotate(180deg) scale(0.8); } 100% { transform: translate(-50%, -50%) rotate(360deg) scale(1); } }
         @keyframes stunnedAnim { 0% { filter: brightness(1) sepia(0); } 50% { filter: brightness(0.5) sepia(1) hue-rotate(200deg); } 100% { filter: brightness(1) sepia(0); } }
+        
+        /* New Animation for Mage Shield/Invincibility */
+        @keyframes shieldPulse { 0% { box-shadow: 0 0 0px #fff; } 50% { box-shadow: 0 0 15px #fff; } 100% { box-shadow: 0 0 0px #fff; } }
 
         .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 50; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
         .active { display: flex !important; }
@@ -60,6 +63,7 @@
         .unit.attack { animation: atkAnim 0.2s linear; }
         .unit.stun { animation: stunnedAnim 1s infinite; }
         .unit.stun::after { content: '💫'; position: absolute; top: -15px; font-size: 14px; }
+        .unit.shielded { border: 2px solid #fff; animation: shieldPulse 0.5s infinite; } /* Mage Shield Effect */
         .u-name { display: none; }
 
         .hp-bar { width: 80px; height: 6px; background: #333; margin: 0 auto; border-radius: 3px; overflow: hidden; }
@@ -77,6 +81,7 @@
         .aoe { position: absolute; border: 2px solid white; background: rgba(255,255,255,0.2); border-radius: 50%; z-index: 11; animation: expand 0.4s forwards; }
         .aoe.healer { border-color: #2ed573; background: rgba(46, 213, 115, 0.2); }
         .aoe.impact { border-color: #ffa502; background: rgba(255, 165, 2, 0.3); animation: expand 0.25s forwards; }
+        .aoe.mage_blast { border-color: #a29bfe; background: rgba(162, 155, 254, 0.5); animation: expand 0.5s forwards; } /* New Effect */
 
         .aim-scope {
             position: absolute; width: 40px; height: 40px;
@@ -94,6 +99,7 @@
 
         .dmg { position: absolute; color: #ff4757; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
         .heal-text { position: absolute; color: #2ed573; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
+        .block-text { position: absolute; color: #fff; font-weight: bold; font-size: 22px; z-index: 20; text-shadow: 0 0 5px #000; animation: floatUp 1s forwards; pointer-events: none; }
 
         .hud-bottom { 
             position: absolute; 
@@ -161,10 +167,14 @@
             <option value="1v1">Custom 1 vs 1</option>
             <option value="2v2">Custom 2 vs 2</option>
             <option value="bot">Play vs Bot</option>
+            <option value="sandbox">Sandbox (Test)</option>
         </select>
         <div id="botOpt" style="display:none; width:100%; text-align:center;">
             <select id="bDiff" style="width:50%;"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select>
         </div>
+        
+        <input type="text" id="customCode" placeholder="ตั้งรหัสห้อง (เว้นว่างเพื่อสุ่ม)" style="border:1px solid var(--gold); color:var(--gold);" maxlength="5">
+        
         <button class="btn btn-gold" onclick="createRoom()">สร้างห้องเอง</button>
         <div style="display:flex; gap:5px; width:80%; max-width:300px;">
             <input type="text" id="rCode" placeholder="Code" style="margin:0;">
@@ -257,16 +267,25 @@
 
         const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️', sniper:'🔫' };
         
-        // LIMITS CONFIG
         const LIMITS = { sword:20, bow:15, tank:15, mage:20, assassin:15, cannon:15, healer:15, sniper:10 };
         const UPGRADE_COSTS = [50, 100, 150, 250, 400, 'MAX'];
         
-        // [EDITED] MAX ENERGY CONFIG (ตรงกับ Server)
         const MAX_ENERGY_LEVELS = [300, 450, 600, 800, 1000, 1500];
 
         // --- MENU & LOBBY ---
         function toggleBot(){ document.getElementById('botOpt').style.display = document.getElementById('gMode').value==='bot'?'block':'none'; }
-        function createRoom(){ socket.emit('create_room', { name: v('pName')||'Host', mode: v('gMode'), difficulty: v('bDiff') }); }
+        
+        // [EDITED] Send custom code
+        function createRoom(){ 
+            const code = document.getElementById('customCode').value;
+            socket.emit('create_room', { 
+                name: v('pName')||'Host', 
+                mode: v('gMode'), 
+                difficulty: v('bDiff'),
+                customId: code
+            }); 
+        }
+        
         function joinRoom(){ const c=v('rCode'); if(c) socket.emit('join_room', { roomId:c, name: v('pName')||'Joiner' }); else alert('ใส่รหัสห้อง'); }
         function v(id){ return document.getElementById(id).value; }
         
@@ -392,7 +411,6 @@
         socket.on('world_update', d=>{
             const now = Date.now();
             
-            // Energy & Level Sync
             myLvl = d.myLvl;
             if (now - lastCastTime < 600 && d.myEng > eng) {
                 eng += (0.15 + (myLvl*0.05)); 
@@ -401,11 +419,9 @@
             }
             document.getElementById('eng').innerText = Math.floor(eng);
 
-            // [EDITED] แสดง Max Energy ให้ถูกต้อง
             const currentMax = MAX_ENERGY_LEVELS[myLvl] || MAX_ENERGY_LEVELS[MAX_ENERGY_LEVELS.length - 1];
             document.getElementById('maxEng').innerText = currentMax;
             
-            // Update Upgrade UI
             document.getElementById('upg-lv').innerText = myLvl;
             const upgCostEl = document.getElementById('upg-cost');
             const upgCard = document.getElementById('card-upgrade');
@@ -428,7 +444,8 @@
                 const u = { 
                     i: data[0], t: data[1], s: data[2], 
                     x: data[3], y: data[4], h: data[5], 
-                    act: data[6], aimTarget: data[7], c: data[8] 
+                    act: data[6], aimTarget: data[7], c: data[8],
+                    shield: data[9] // [NEW] รับค่าสถานะโล่/อมตะ
                 };
 
                 if(u.s === mySide) {
@@ -447,14 +464,15 @@
                 
                 el.style.left = u.x+'px'; el.style.top = u.y+'px';
                 
-                // Clear all states
-                el.classList.remove('walk', 'attack', 'stun');
+                el.classList.remove('walk', 'attack', 'stun', 'shielded');
                 
                 if(u.act === 'walk') el.classList.add('walk');
                 else if(u.act === 'attack') el.classList.add('attack');
                 else if(u.act === 'stun') el.classList.add('stun');
+                
+                // [NEW] แสดงผลโล่ Mage
+                if(u.shield) el.classList.add('shielded');
 
-                // Scope Logic
                 if(u.aimTarget) {
                     let targetEl = document.getElementById(u.aimTarget);
                     let scopeId = 'scope_' + u.i;
@@ -478,7 +496,6 @@
                 }
             });
 
-            // Update Cards (Limits)
             document.querySelectorAll('.card:not(.upgrade)').forEach(c=>{
                 if (!c.classList.contains('cooldown-active')) {
                     const cost = parseInt(c.querySelector('.c-cost').innerText);
@@ -518,10 +535,18 @@
                     e.style.left=f.x+'px'; e.style.top=(f.y-30)+'px';
                     fxL.appendChild(e); setTimeout(()=>e.remove(),800);
                 }
+                else if(f.type==='text'){
+                    // [NEW] Text Effect (BLOCK)
+                    const e=document.createElement('div'); e.className='block-text'; e.innerText=f.val;
+                    e.style.color=f.color;
+                    e.style.left=f.x+'px'; e.style.top=(f.y-30)+'px';
+                    fxL.appendChild(e); setTimeout(()=>e.remove(),1000);
+                }
                 else if(f.type==='aoe'){
                     const e=document.createElement('div'); e.className='aoe'; 
                     if(f.t === 'healer') e.classList.add('healer');
                     if(f.t === 'impact') e.classList.add('impact'); 
+                    if(f.t === 'mage_blast') e.classList.add('mage_blast'); // [NEW]
                     e.style.left=f.x+'px'; e.style.top=f.y+'px';
                     e.style.width=(f.r*2)+'px'; e.style.height=(f.r*2)+'px';
                     if(f.t === 'assassin') e.style.borderColor = '#ff4757'; 
