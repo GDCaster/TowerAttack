@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Battle War: Mobile Zoom</title>
+    <title>Battle War: Net Saver Mode</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -54,7 +54,9 @@
             position: absolute; width: 30px; height: 30px; border-radius: 50%; 
             transform: translate(-50%, -50%); z-index: 10; display: flex; 
             justify-content: center; align-items: center; border: 2px solid white;
-            font-size: 16px; transition: left 0.05s linear, top 0.05s linear;
+            font-size: 16px; 
+            /* [CHANGED] Increased duration to 0.1s to match 100ms server update rate */
+            transition: left 0.1s linear, top 0.1s linear;
         }
         .unit.walk { animation: walkAnim 0.5s infinite linear; }
         .unit.attack { animation: atkAnim 0.2s linear; }
@@ -67,11 +69,9 @@
         .proj.cannon { background: #333; width: 16px; height: 16px; }
         
         .aoe { position: absolute; border: 2px solid white; background: rgba(255,255,255,0.2); border-radius: 50%; z-index: 11; animation: expand 0.4s forwards; }
-        /* [NEW] Style for Healer AOE */
         .aoe.healer { border-color: #2ed573; background: rgba(46, 213, 115, 0.2); }
 
         .dmg { position: absolute; color: #ff4757; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
-        /* [NEW] Style for Heal Text */
         .heal-text { position: absolute; color: #2ed573; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
 
         .hud-top { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; pointer-events: none; }
@@ -193,7 +193,6 @@
         const socket = io();
         let rid=null, mySide=null, eng=0;
         let timerInterval = null;
-        // [NEW] Added healer icon
         const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️' };
 
         // --- MENU & LOBBY ---
@@ -347,7 +346,6 @@
                     e.style.left=f.x+'px'; e.style.top=(f.y-20)+'px';
                     fxL.appendChild(e); setTimeout(()=>e.remove(),800);
                 } 
-                // [NEW] Heal Text Effect
                 else if(f.type==='heal'){
                     const e=document.createElement('div'); e.className='heal-text'; e.innerText=`+${f.val}`;
                     e.style.left=f.x+'px'; e.style.top=(f.y-30)+'px';
@@ -355,7 +353,6 @@
                 }
                 else if(f.type==='aoe'){
                     const e=document.createElement('div'); e.className='aoe'; 
-                    // [NEW] Healer Green AOE
                     if(f.t === 'healer') e.classList.add('healer');
                     
                     e.style.left=f.x+'px'; e.style.top=f.y+'px';

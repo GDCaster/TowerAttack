@@ -21,7 +21,6 @@ const SPECS = {
     mage:     { hp: 30,  dmg: 9,  range: 250, speed: 1.8, size: 30, cost: 100, atkRate: 1500, type:'aoe', radius: 40 },
     assassin: { hp: 30,  dmg: 10, range: 80,  speed: 4.5, size: 25, cost: 75, atkRate: 600, special: 'jump', type: 'hybrid', radius: 50 },
     cannon:   { hp: 70,  dmg: 18, range: 350, speed: 1.5, size: 40, cost: 175, atkRate: 5000, type:'aoe', radius: 60 },
-    // [EDIT] ปรับ range เป็น 150 เพื่อให้หยุดก่อนถึงป้อม (เท่ากับ radius)
     healer:   { hp: 40,  dmg: 0,  range: 150, speed: 2.0, size: 28, cost: 50, atkRate: 2500, type: 'support', radius: 150 }
 };
 
@@ -40,6 +39,7 @@ let rooms = {};
 let matchQueue = [];
 
 // Game Loop
+// Run logic every 50ms (20 TPS) but send data every 100ms (10 TPS)
 setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
@@ -57,26 +57,38 @@ setInterval(() => {
         }
 
         if (room.status === 'playing') {
+            // 1. Logic Calculation (Always runs to keep physics consistent)
             updateGame(room);
-            const packet = {
-                b: room.bases,
-                u: room.units.map(u => ({
-                    i: u.id, t: u.type, s: u.side, c: u.color,
-                    x: Math.round(u.x), y: Math.round(u.y), h: u.hp,
-                    n: u.owner,
-                    act: u.action
-                })),
-                proj: room.projectiles.map(p => ({
-                    x: Math.round(p.x), y: Math.round(p.y), t: p.type
-                })),
-                fx: room.effects
-            };
-            room.players.forEach(player => {
-                if(player.isBot) return;
-                packet.myEng = Math.floor(player.energy);
-                io.to(player.id).emit('world_update', packet);
-            });
-            room.effects = [];
+
+            // Initialize tick counter
+            if (typeof room.serverTick === 'undefined') room.serverTick = 0;
+            room.serverTick++;
+
+            // 2. Network Transmission (Runs every 2 ticks = 100ms) -> SAVES BANDWIDTH
+            if (room.serverTick % 2 === 0) {
+                const packet = {
+                    b: room.bases,
+                    u: room.units.map(u => ({
+                        i: u.id, t: u.type, s: u.side, c: u.color,
+                        x: Math.round(u.x), y: Math.round(u.y), h: u.hp,
+                        n: u.owner, // Name is KEPT as requested
+                        act: u.action
+                    })),
+                    proj: room.projectiles.map(p => ({
+                        x: Math.round(p.x), y: Math.round(p.y), t: p.type
+                    })),
+                    fx: room.effects // Send accumulated effects
+                };
+                
+                room.players.forEach(player => {
+                    if(player.isBot) return;
+                    packet.myEng = Math.floor(player.energy);
+                    io.to(player.id).emit('world_update', packet);
+                });
+
+                // Clear effects only after sending
+                room.effects = [];
+            }
         }
     }
 }, 50);
@@ -102,60 +114,47 @@ function updateGame(room) {
     room.units.forEach(u => {
         u.action = 'idle';
 
-        // --- [UPDATED] HEALER LOGIC ---
+        // --- HEALER LOGIC ---
         if (u.type === 'healer') {
-            // 1. หาเพื่อนที่บาดเจ็บในระยะ (เพื่อตัดสินใจว่าจะหยุดเดินไหม)
             const friendsToHeal = room.units.filter(friend => 
                 friend.side === u.side && 
                 !friend.dead && 
                 friend.id !== u.id &&
                 Math.hypot(u.x - friend.x, u.y - friend.y) <= SPECS.healer.radius &&
-                friend.hp < SPECS[friend.type].hp // เลือดไม่เต็ม
+                friend.hp < SPECS[friend.type].hp
             );
 
-            // 2. เช็คระยะห่างจากป้อมศัตรู
             const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
             const distToBase = Math.abs(u.x - enemyBaseX);
-            const atBaseLimit = distToBase <= SPECS.healer.range; // ใช้ range 150 เป็นระยะหยุด
+            const atBaseLimit = distToBase <= SPECS.healer.range;
 
-            // เงื่อนไขหยุดเดิน: มีคนให้ฮีล หรือ ถึงระยะป้อมแล้ว
             if (friendsToHeal.length > 0 || atBaseLimit) {
-                u.action = 'idle'; // หยุดเดิน
-                
-                // ถ้ามีคนให้ฮีล และ Cooldown พร้อม -> ฮีลเลย
+                u.action = 'idle';
                 if (friendsToHeal.length > 0 && now - u.lastAttack > SPECS.healer.atkRate) {
                     u.lastAttack = now;
-                    // u.action = 'attack'; // (Optional) ใส่ท่าทางโจมตีถ้าต้องการ
-                    
                     friendsToHeal.forEach(f => {
                         f.hp += 5;
                         if (f.hp > SPECS[f.type].hp) f.hp = SPECS[f.type].hp;
                         room.effects.push({ type: 'heal', x: f.x, y: f.y, val: 5 });
                     });
-                    
-                    // Effect วงฮีล
                     room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.healer.radius, t: 'healer' });
                 }
             } else {
-                // ไม่มีใครให้ฮีล และยังไม่ถึงป้อม -> เดินต่อ
                 const dir = u.side === 'left' ? 1 : -1;
                 u.x += dir * u.speed;
                 u.action = 'walk';
             }
 
-            // จัดตำแหน่งแกน Y ไม่ให้ทับกัน (เหมือนเดิม)
             const mid = WORLD_H / 2;
             if (u.y < mid - 100) u.y += 0.5;
             if (u.y > mid + 100) u.y -= 0.5;
-            
-            return; // จบ Logic Healer
+            return;
         }
 
-        // --- ATTACKER LOGIC (ตัวอื่นๆ) ---
+        // --- ATTACKER LOGIC ---
         let target = null;
         let minDist = 999;
 
-        // Find Target
         room.units.forEach(o => {
             if (o.side !== u.side && !o.dead) {
                 const dist = Math.hypot(u.x - o.x, u.y - o.y);
@@ -163,7 +162,6 @@ function updateGame(room) {
             }
         });
 
-        // [ASSASSIN] Warp Logic
         if (u.type === 'assassin' && target && !u.hasJumped && minDist < 350) {
             const offset = u.side === 'left' ? 40 : -40;
             u.x = target.x + offset;
@@ -177,7 +175,6 @@ function updateGame(room) {
         const distToBase = Math.abs(u.x - enemyBaseX);
         const canHitBase = distToBase <= SPECS[u.type].range;
         
-        // Attack Logic
         if (canHitBase) {
             if (now - u.lastAttack > SPECS[u.type].atkRate) {
                 u.lastAttack = now;
@@ -223,7 +220,6 @@ function updateGame(room) {
                 }
             }
         } else {
-            // Move
             const dir = u.side === 'left' ? 1 : -1;
             u.x += dir * u.speed;
             u.action = 'walk';
@@ -287,7 +283,6 @@ function spawnUnit(room, player, type) {
     if (player.energy < SPECS[type].cost) return;
     player.energy -= SPECS[type].cost;
     const batchId = Date.now() + Math.random();
-    // ถ้าเป็น Healer หรืออื่นๆ ก็จำนวนตามนี้
     const count = 5; 
     for (let i = 0; i < count; i++) {
         room.units.push({
