@@ -12,22 +12,23 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- GAME CONFIG ---
 const WORLD_W = 1600;
 const WORLD_H = 900;
-const MAX_ENERGY = 300; 
+
+// [EDITED] กำหนด Max Energy ตามเลเวล (0 ถึง 5)
+const MAX_ENERGY_LEVELS = [300, 450, 600, 800, 1000, 1500];
 
 // Upgrade Config
-const UPGRADE_COSTS = [50, 100, 150, 250, 400]; // ราคาอัปเกรดแต่ละขั้น (0->1, 1->2, ...)
-const REGEN_RATES = [0.15, 0.22, 0.30, 0.40, 0.55, 0.75]; // อัตราการเด้งต่อ Tick (ปกติเกมเก่าคือ 0.2)
+const UPGRADE_COSTS = [50, 100, 150, 250, 400]; // ราคาอัปเกรด
+const REGEN_RATES = [0.15, 0.22, 0.30, 0.40, 0.55, 0.75]; // อัตราการเด้ง
 
 // *** LIMITS & SPECS CONFIG ***
 const SPECS = {
     sword:    { hp: 25,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 1200, limit: 20, type: 'melee' },
     bow:      { hp: 20,  dmg: 5,  range: 300, speed: 2.5, size: 30, cost: 45, atkRate: 1500, limit: 15, type: 'ranged' },
-    // TANK: ปรับราคา 100, เพิ่มสกิล Charge
-    tank:     { hp: 300, dmg: 2,  range: 50,  speed: 2.5, size: 36, cost: 100, atkRate: 2000, limit: 15, type: 'melee', 
-                chargeSpeed: 3.75, impactRadius: 150, stunDur: 2500, knockback: 10 }, 
-    mage:     { hp: 25,  dmg: 10, range: 250, speed: 2.0, size: 30, cost: 125, atkRate: 1000, limit: 20, type: 'aoe', radius: 40, baseType: 'ranged' },
-    assassin: { hp: 15,  dmg: 15,  range: 65,  speed: 6.0, size: 25, cost: 80, atkRate: 2000,  limit: 15, type: 'hybrid', radius: 65, jumpRange: 250, jumpCd: 7000 },
-    cannon:   { hp: 50,  dmg: 20, range: 350, speed: 1.5, size: 40, cost: 205, atkRate: 4500, limit: 15, type: 'aoe', radius: 70, baseType: 'ranged' },
+    tank:     { hp: 250, dmg: 2,  range: 50,  speed: 2.5, size: 36, cost: 100, atkRate: 2000, limit: 15, type: 'melee', 
+                chargeSpeed: 3.75, impactRadius: 50, stunDur: 500, knockback: 5 }, 
+    mage:     { hp: 25,  dmg: 15, range: 250, speed: 2.0, size: 30, cost: 125, atkRate: 1000, limit: 20, type: 'aoe', radius: 40, baseType: 'ranged' },
+    assassin: { hp: 15,  dmg: 15,  range: 65,  speed: 6.0, size: 25, cost: 80, atkRate: 2000,  limit: 15, type: 'hybrid', radius: 75, jumpRange: 250, jumpCd: 7000 },
+    cannon:   { hp: 60,  dmg: 20, range: 350, speed: 1.5, size: 40, cost: 205, atkRate: 4500, limit: 15, type: 'aoe', radius: 70, baseType: 'ranged' },
     healer:   { hp: 25,  dmg: 0,  range: 150, speed: 2.5, size: 28, cost: 50, atkRate: 3000, limit: 15, type: 'support', radius: 195, baseType: 'ranged' },
     sniper:   { hp: 40,  dmg: 65, range: 400, speed: 2.0, size: 30, cost: 125, atkRate: 8000, limit: 10, type: 'ranged', radius: 15, aimTime: 2000 }
 };
@@ -70,7 +71,6 @@ setInterval(() => {
             if (room.serverTick % 4 === 0) {
                 const packet = {
                     b: room.bases,
-                    // Format: [id, type, side, x, y, hp, action, aimTarget, color]
                     u: room.units.map(u => [
                         u.id, 
                         u.type, 
@@ -78,11 +78,10 @@ setInterval(() => {
                         Math.round(u.x), 
                         Math.round(u.y), 
                         u.hp,
-                        u.isStunned ? 'stun' : u.action, // ส่งสถานะ stun ผ่าน action
+                        u.isStunned ? 'stun' : u.action, 
                         u.aimTargetId || null, 
                         u.color 
                     ]),
-                    // Format: [x, y, type]
                     proj: room.projectiles.map(p => [
                         Math.round(p.x), 
                         Math.round(p.y), 
@@ -94,7 +93,7 @@ setInterval(() => {
                 room.players.forEach(player => {
                     if(player.isBot) return;
                     packet.myEng = Math.floor(player.energy);
-                    packet.myLvl = player.energyLevel; // ส่ง Level กลับไปเพื่อให้ Client แสดงผลราคา
+                    packet.myLvl = player.energyLevel; 
                     io.to(player.id).emit('world_update', packet);
                 });
 
@@ -107,15 +106,20 @@ setInterval(() => {
 function updateGame(room) {
     const now = Date.now();
     
-    // Regen Energy System (Modified)
+    // [EDITED] Regen Energy System (Dynamic Max Energy)
     room.players.forEach(p => {
-        if (p.energy < MAX_ENERGY) {
-            // ใช้ค่า Regen ตาม Level ของผู้เล่น
+        // หาค่า Max Energy ตาม Level ของผู้เล่น
+        const currentMaxEnergy = MAX_ENERGY_LEVELS[p.energyLevel] || MAX_ENERGY_LEVELS[MAX_ENERGY_LEVELS.length - 1];
+
+        if (p.energy < currentMaxEnergy) {
             let rIndex = p.energyLevel;
             if(p.isBot) rIndex = BOT_SETTINGS[room.difficulty].regenIdx;
             
             const rate = REGEN_RATES[Math.min(rIndex, REGEN_RATES.length - 1)];
             p.energy += rate;
+            
+            // Cap ไม่ให้เกิน Max ปัจจุบัน
+            if (p.energy > currentMaxEnergy) p.energy = currentMaxEnergy;
         }
         if (p.isBot) runBotLogic(room, p);
     });
@@ -132,7 +136,7 @@ function updateGame(room) {
         if (u.stunEndTime && now < u.stunEndTime) {
             u.isStunned = true;
             u.action = 'stun';
-            return; // หยุดการกระทำทุกอย่าง
+            return; 
         } else {
             u.isStunned = false;
         }
@@ -140,50 +144,38 @@ function updateGame(room) {
         // --- TANK CHARGE LOGIC ---
         if (u.type === 'tank' && u.charging) {
             u.action = 'walk';
-            // หาศัตรูที่ชน (ระยะประชิด)
             const enemyHit = room.units.find(e => e.side !== u.side && !e.dead && Math.hypot(u.x - e.x, u.y - e.y) < (u.size + e.size));
             const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
             const distToBase = Math.abs(u.x - enemyBaseX);
             
-            // ถ้าชนศัตรู หรือ ชนฐาน
             if (enemyHit || distToBase <= SPECS.tank.range) {
-                u.charging = false; // หยุดชาร์จ
-                
-                // สร้างวง Impact
+                u.charging = false; 
                 room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.tank.impactRadius, t: 'impact' });
                 
-                // หาศัตรูในวง
                 room.units.forEach(e => {
                     if (e.side !== u.side && !e.dead) {
                         const dist = Math.hypot(u.x - e.x, u.y - e.y);
                         if (dist <= SPECS.tank.impactRadius) {
-                            // Apply Stun
                             e.stunEndTime = now + SPECS.tank.stunDur;
                             e.action = 'stun';
-                            
-                            // Apply Knockback
                             const angle = Math.atan2(e.y - u.y, e.x - u.x);
                             e.x += Math.cos(angle) * SPECS.tank.knockback;
                             e.y += Math.sin(angle) * SPECS.tank.knockback;
-                            
-                            // ตรวจสอบขอบจอ
                             if(e.y < 50) e.y = 50; if(e.y > WORLD_H-50) e.y = WORLD_H-50;
                         }
                     }
                 });
             } else {
-                // วิ่งต่อด้วยความเร็วสูง
                 const dir = u.side === 'left' ? 1 : -1;
                 u.x += dir * SPECS.tank.chargeSpeed;
                 const mid = WORLD_H / 2;
-                // ปรับเลนเข้ากลางนิดหน่อย
                 if (u.y < mid - 50) u.y += 0.5;
                 if (u.y > mid + 50) u.y -= 0.5;
-                return; // จบ Turn ของ Tank ในขณะชาร์จ
+                return; 
             }
         }
 
-        // --- SNIPER LOGIC (Keep existing) ---
+        // --- SNIPER LOGIC ---
         if (u.type === 'sniper') {
             const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
             const distToBase = Math.abs(u.x - enemyBaseX);
@@ -283,12 +275,25 @@ function updateGame(room) {
                     const dist = Math.hypot(u.x - jumpTarget.x, u.y - jumpTarget.y);
                     if (dist > 50) { 
                         const offset = u.side === 'left' ? 40 : -40;
-                        u.x = jumpTarget.x + offset; u.y = jumpTarget.y;
+                        u.x = jumpTarget.x + offset; 
+                        u.y = jumpTarget.y;
                         u.jumpReadyTime = now + SPECS.assassin.jumpCd;
+                        
+                        // Warp Effect
                         room.effects.push({ type: 'warp', x: u.x, y: u.y });
-                        jumpTarget.hp -= 15;
-                        room.effects.push({ type: 'dmg', x: jumpTarget.x, y: jumpTarget.y, val: 15 });
+
+                        // [EDITED] AOE Damage Logic (ตวัดรอบตัว)
                         room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.assassin.radius, t: 'assassin' });
+                        
+                        room.units.forEach(e => {
+                            // เช็คศัตรูที่อยู่ในระยะ Radius
+                            if (e.side !== u.side && !e.dead && Math.hypot(u.x - e.x, u.y - e.y) <= SPECS.assassin.radius) {
+                                e.hp -= 15; 
+                                room.effects.push({ type: 'dmg', x: e.x, y: e.y, val: 15 });
+                                if (e.hp <= 0) e.dead = true;
+                            }
+                        });
+
                         u.lastAttack = now; 
                         return; 
                     }
@@ -413,7 +418,6 @@ function updateProjectiles(room) {
 }
 
 function runBotLogic(room, bot) {
-    // Bot upgrade logic (Simple)
     if (bot.energy > 400 && bot.energyLevel < 4) {
         bot.energy -= UPGRADE_COSTS[bot.energyLevel];
         bot.energyLevel++;
@@ -446,13 +450,11 @@ function spawnUnit(room, player, type) {
     const count = type === 'cannon' ? 3 : 5; 
     
     for (let i = 0; i < count; i++) {
-        // Init properties
         let u = {
             id: `${batchId}_${i}`, type, side: player.side, color: player.color, owner: player.name,
             x: player.side === 'left' ? 120 : WORLD_W - 120, y: (WORLD_H / 2) + (Math.random() * 200 - 100),
             hp: SPECS[type].hp, dmg: SPECS[type].dmg, range: SPECS[type].range, speed: SPECS[type].speed, size: SPECS[type].size,
             lastAttack: 0, dead: false, action: 'idle', jumpReadyTime: 0, aiming: false, aimStartTime: 0, aimTargetId: null,
-            // Tank Special
             charging: (type === 'tank'), 
             stunEndTime: 0
         };
