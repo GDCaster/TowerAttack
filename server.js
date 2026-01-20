@@ -15,16 +15,16 @@ const WORLD_H = 900;
 const MAX_ENERGY = 300; 
 
 const SPECS = {
-    sword:    { hp: 25,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 1200, limit: 40, type: 'melee' },
+    sword:    { hp: 25,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 1200, limit: 30, type: 'melee' },
     bow:      { hp: 20,  dmg: 5,  range: 300, speed: 2.5, size: 30, cost: 45, atkRate: 1500, limit: 30, type: 'ranged' },
-    tank:     { hp: 150, dmg: 5,  range: 50,  speed: 2.5, size: 36, cost: 75, atkRate: 1500, limit: 40, type: 'melee' },
-    mage:     { hp: 25,  dmg: 10, range: 250, speed: 2.0, size: 30, cost: 125, atkRate: 1000, limit: 30, type: 'aoe', radius: 100, baseType: 'ranged' },
-    // Assassin: obsRange 1400 (เล็งเป้า), jumpRange 500 (ระยะโดด), speed 6.0
-    assassin: { hp: 15,  dmg: 5,  range: 65,  speed: 6.0, size: 25, cost: 80, atkRate: 500,  limit: 40, type: 'hybrid', radius: 65, obsRange: 1400, jumpRange: 500, jumpCd: 15000 },
-    cannon:   { hp: 70,  dmg: 20, range: 350, speed: 1.5, size: 40, cost: 175, atkRate: 4500, limit: 20, type: 'aoe', radius: 75, baseType: 'ranged' },
+    tank:     { hp: 150, dmg: 5,  range: 50,  speed: 2.5, size: 36, cost: 75, atkRate: 1500, limit: 30, type: 'melee' },
+    mage:     { hp: 25,  dmg: 10, range: 250, speed: 2.0, size: 30, cost: 125, atkRate: 1000, limit: 30, type: 'aoe', radius: 40, baseType: 'ranged' },
+    // Assassin: obsRange 1400 (Observation only, not movement), speed 6.0
+    assassin: { hp: 15,  dmg: 5,  range: 65,  speed: 6.0, size: 25, cost: 80, atkRate: 500,  limit: 20, type: 'hybrid', radius: 65, obsRange: 1400, jumpCd: 7000 },
+    cannon:   { hp: 50,  dmg: 20, range: 350, speed: 1.5, size: 40, cost: 175, atkRate: 4500, limit: 20, type: 'aoe', radius: 65, baseType: 'ranged' },
     healer:   { hp: 25,  dmg: 0,  range: 150, speed: 2.5, size: 28, cost: 50, atkRate: 3000, limit: 30, type: 'support', radius: 195, baseType: 'ranged' },
     // Sniper: Radius set to 15 to ensure hit
-    sniper:   { hp: 40,  dmg: 100, range: 600, speed: 2.0, size: 30, cost: 100, atkRate: 7000, limit: 30, type: 'ranged', radius: 15 }
+    sniper:   { hp: 40,  dmg: 100, range: 600, speed: 2.0, size: 30, cost: 100, atkRate: 7000, limit: 20, type: 'ranged', radius: 15 }
 };
 
 const BOT_SETTINGS = {
@@ -141,9 +141,9 @@ function updateGame(room) {
         // --- ASSASSIN LOGIC [FIXED] ---
         if (u.type === 'assassin') {
             
-            // 1. SKILL PHASE (Aiming & Jumping)
+            // 1. Observation Phase (SKILL CHECK ONLY)
+            // Can we jump?
             if (!u.jumpReadyTime || now > u.jumpReadyTime) {
-                // หาเป้าหมายในระยะสังเกต (obsRange 1400) - แค่เล็ง ยังไม่เดินหา
                 const enemiesInObs = room.units.filter(e => e.side !== u.side && !e.dead && Math.hypot(u.x - e.x, u.y - e.y) <= SPECS.assassin.obsRange);
                 
                 let jumpTarget = null;
@@ -151,9 +151,11 @@ function updateGame(room) {
                 const rangedTargets = enemiesInObs.filter(e => ['bow', 'mage', 'cannon', 'sniper', 'healer'].includes(e.type));
                 
                 if (rangedTargets.length > 0) {
+                    // Jump to furthest ranged unit
                     rangedTargets.sort((a, b) => SPECS[b.type].range - SPECS[a.type].range);
                     jumpTarget = rangedTargets[0];
                 } else if (enemiesInObs.length > 0) {
+                    // Fallback: Jump to closest unit
                     let minDist = 9999;
                     enemiesInObs.forEach(e => {
                         const d = Math.hypot(u.x - e.x, u.y - e.y);
@@ -163,26 +165,25 @@ function updateGame(room) {
 
                 if (jumpTarget) {
                     const dist = Math.hypot(u.x - jumpTarget.x, u.y - jumpTarget.y);
-                    
-                    // เงื่อนไข: ต้องอยู่ในระยะสกิล (jumpRange 500) ถึงจะโดด
-                    // ถ้าระยะยังไกลกว่า 500 จะยังไม่ทำอะไร (ปล่อยให้เดินปกติ)
-                    if (dist <= SPECS.assassin.jumpRange && dist > 50) { 
+                    // Jump condition: Far enough to jump, but within obs range
+                    if (dist > 50) { // Don't jump if already super close
                         const offset = u.side === 'left' ? 40 : -40;
                         u.x = jumpTarget.x + offset;
                         u.y = jumpTarget.y;
-                        u.jumpReadyTime = now + SPECS.assassin.jumpCd;
+                        u.jumpReadyTime = now + SPECS.assassin.jumpCd; // 7s Cooldown
                         room.effects.push({ type: 'warp', x: u.x, y: u.y });
                         
+                        // Instant slash
                         jumpTarget.hp -= 15;
                         room.effects.push({ type: 'dmg', x: jumpTarget.x, y: jumpTarget.y, val: 15 });
                         room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.assassin.radius, t: 'assassin' });
-                        return; // จบเทิร์นทันทีเมื่อโดด
+                        return; // Done for this tick
                     }
                 }
             }
 
-            // 2. NORMAL PHASE (Walking / Attacking)
-            // หาศัตรูที่อยู่ใกล้ๆ (ระยะประชิด/ระยะโจมตี) เพื่อตีหรือเดินเข้าหา
+            // 2. Normal Movement/Attack Phase (If didn't jump)
+            // Only look for enemies in NORMAL range to attack or walk towards base
             let combatTarget = null;
             let minCombatDist = 999;
 
@@ -193,7 +194,7 @@ function updateGame(room) {
                 }
             });
 
-            // ตีป้อม
+            // Base Attack Logic
             const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
             const distToBase = Math.abs(u.x - enemyBaseX);
             
@@ -207,7 +208,7 @@ function updateGame(room) {
                     if (room.bases[targetSide] <= 0) endGame(room, u.side);
                 }
             }
-            // ตีคน (ถ้าอยู่ในระยะตี)
+            // Combat Logic
             else if (combatTarget && minCombatDist <= SPECS.assassin.range) {
                 if (now - u.lastAttack > SPECS.assassin.atkRate) {
                     u.lastAttack = now;
@@ -217,14 +218,7 @@ function updateGame(room) {
                     if (combatTarget.hp <= 0) combatTarget.dead = true;
                 }
             } 
-            // เดินเข้าหา (Chase): ถ้าเจอศัตรูในระยะมองเห็นปกติ (เช่น 250) ให้เดินเข้าหาตัวนั้นเลย
-            else if (combatTarget && minCombatDist <= 250) {
-                 const angle = Math.atan2(combatTarget.y - u.y, combatTarget.x - u.x);
-                 u.x += Math.cos(angle) * u.speed;
-                 u.y += Math.sin(angle) * u.speed;
-                 u.action = 'walk';
-            }
-            // เดินปกติ (Walk to Base): ถ้าไม่มีใครใกล้ๆ ให้เดินตรงไปป้อม (ไม่สนตัวที่เล็งไว้ไกลๆ)
+            // Walk Logic (Blindly walk forward, do not chase obsRange targets)
             else {
                 u.x += (u.side === 'left' ? 1 : -1) * u.speed;
                 u.action = 'walk';
@@ -240,6 +234,7 @@ function updateGame(room) {
             if (o.side !== u.side && !o.dead) {
                 const dist = Math.hypot(u.x - o.x, u.y - o.y);
                 
+                // [SNIPER LOGIC] Avoid repeated targets if possible
                 if (u.type === 'sniper' && u.lastTargetId === o.id) {
                     if (room.units.filter(x => x.side !== u.side && !x.dead).length > 1) {
                          return; 
@@ -277,24 +272,12 @@ function updateGame(room) {
                 }
             }
         } else {
-            // MOVEMENT LOGIC (แก้ไขตามที่ขอ)
-            // ถ้ามีเป้าหมายอยู่ในระยะที่ "ใกล้จะตีถึง" (Range + 200) ให้เดินมุ่งหน้าเข้าหาเป้าหมายนั้น
-            if (target && minDist <= SPECS[u.type].range + 200) {
-                 const angle = Math.atan2(target.y - u.y, target.x - u.x);
-                 u.x += Math.cos(angle) * u.speed;
-                 u.y += Math.sin(angle) * u.speed;
-                 u.action = 'walk';
-            } 
-            // ถ้าไม่มีใครใกล้ๆ เดินตรงไปป้อม
-            else {
-                const dir = u.side === 'left' ? 1 : -1;
-                u.x += dir * u.speed;
-                u.action = 'walk';
-                
-                const mid = WORLD_H / 2;
-                if (u.y < mid - 100) u.y += 0.5;
-                if (u.y > mid + 100) u.y -= 0.5;
-            }
+            const dir = u.side === 'left' ? 1 : -1;
+            u.x += dir * u.speed;
+            u.action = 'walk';
+            const mid = WORLD_H / 2;
+            if (u.y < mid - 100) u.y += 0.5;
+            if (u.y > mid + 100) u.y -= 0.5;
         }
     });
 

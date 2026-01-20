@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Battle War: Assassin Fix & Limits</title>
+    <title>Battle War: Homing Sniper & Smart Assassin</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -103,7 +103,7 @@
 
     <div id="menuScreen" class="screen active">
         <h1 style="color:var(--gold); font-size:40px;">BATTLE WAR</h1>
-        <p style="color:#777; margin-bottom:20px;">Assassin & Limits Update</p>
+        <p style="color:#777; margin-bottom:20px;">Homing & Smart Assassin</p>
         <input type="text" id="pName" placeholder="ชื่อตัวละคร" maxlength="10">
         
         <button class="btn btn-blue" style="width:80%; max-width:300px; padding:15px; font-size:20px;" onclick="startMatchmaking()">🔍 Auto Match (1v1)</button>
@@ -188,7 +188,7 @@
             <div id="card-healer" class="card" onclick="spawn('healer',50)"><span class="c-icon">⚕️</span><span class="c-cost">50</span><span class="c-limit" id="lim-healer">0/30</span><div class="cd-overlay"></div></div>
             <div id="card-mage" class="card" onclick="spawn('mage',125)"><span class="c-icon">🔮</span><span class="c-cost">125</span><span class="c-limit" id="lim-mage">0/30</span><div class="cd-overlay"></div></div>
             <div id="card-sniper" class="card" onclick="spawn('sniper',100)"><span class="c-icon">🔫</span><span class="c-cost">100</span><span class="c-limit" id="lim-sniper">0/30</span><div class="cd-overlay"></div></div>
-            <div id="card-cannon" class="card" onclick="spawn('cannon',175)"><span class="c-icon">💣</span><span class="c-cost">175</span><span class="c-limit" id="lim-cannon">0/20</span><div class="cd-overlay"></div></div>
+            <div id="card-cannon" class="card" onclick="spawn('cannon',175)"><span class="c-icon">💣</span><span class="c-cost">175</span><span class="c-limit" id="lim-cannon">0/15</span><div class="cd-overlay"></div></div>
         </div>
     </div>
 
@@ -199,7 +199,7 @@
         const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️', sniper:'🔫' };
         
         // Match limits for display
-        const LIMITS = { sword:40, tank:40, assassin:40, bow:30, mage:30, healer:30, sniper:30, cannon:20 };
+        const LIMITS = { sword:40, tank:40, assassin:40, bow:30, mage:30, healer:30, sniper:30, cannon:15 };
 
         // --- MENU & LOBBY ---
         function toggleBot(){ document.getElementById('botOpt').style.display = document.getElementById('gMode').value==='bot'?'block':'none'; }
@@ -285,7 +285,6 @@
             const cardEl = document.getElementById('card-' + t);
             const limEl = document.getElementById('lim-' + t);
             
-            // Check cooldown, energy, and limit (visually)
             const [cur, max] = limEl.innerText.split('/').map(Number);
             if(cur >= max) return; // Limit reached
 
@@ -316,7 +315,6 @@
         socket.on('world_update', d=>{
             eng = d.myEng; document.getElementById('eng').innerText = eng + "/300";
             
-            // 1. Calculate Unit Counts
             const myCounts = {};
             d.u.forEach(u => {
                 if(u.s === mySide) {
@@ -324,7 +322,6 @@
                 }
             });
 
-            // 2. Update Card UI (Cost & Limit)
             document.querySelectorAll('.card').forEach(c=>{
                 if (!c.classList.contains('cooldown-active')) {
                     const cost = parseInt(c.querySelector('.c-cost').innerText);
@@ -332,11 +329,9 @@
                     const curCount = myCounts[type] || 0;
                     const maxCount = LIMITS[type];
                     
-                    // Update text
                     const limText = document.getElementById('lim-' + type);
                     if(limText) limText.innerText = `${curCount}/${maxCount}`;
 
-                    // Disable if No Energy OR Limit Reached
                     if(eng < cost || curCount >= maxCount) {
                         c.classList.add('disabled');
                     } else {
