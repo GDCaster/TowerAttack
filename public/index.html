@@ -209,7 +209,7 @@
         <div class="dock">
             <div id="card-sword" class="card" onclick="spawn('sword',20)"><span class="c-icon">⚔️</span><span class="c-cost">20</span><span class="c-limit" id="lim-sword">0/20</span><div class="cd-overlay"></div></div>
             <div id="card-bow" class="card" onclick="spawn('bow',45)"><span class="c-icon">🏹</span><span class="c-cost">45</span><span class="c-limit" id="lim-bow">0/15</span><div class="cd-overlay"></div></div>
-            <div id="card-assassin" class="card" onclick="spawn('assassin',80)"><span class="c-icon">🥷</span><span class="c-cost">80</span><span class="c-limit" id="lim-assassin">0/20</span><div class="cd-overlay"></div></div>
+            <div id="card-assassin" class="card" onclick="spawn('assassin',80)"><span class="c-icon">🥷</span><span class="c-cost">80</span><span class="c-limit" id="lim-assassin">0/15</span><div class="cd-overlay"></div></div>
             <div id="card-tank" class="card" onclick="spawn('tank',75)"><span class="c-icon">🛡️</span><span class="c-cost">75</span><span class="c-limit" id="lim-tank">0/15</span><div class="cd-overlay"></div></div>
             <div id="card-healer" class="card" onclick="spawn('healer',50)"><span class="c-icon">⚕️</span><span class="c-cost">50</span><span class="c-limit" id="lim-healer">0/15</span><div class="cd-overlay"></div></div>
             <div id="card-mage" class="card" onclick="spawn('mage',125)"><span class="c-icon">🔮</span><span class="c-cost">125</span><span class="c-limit" id="lim-mage">0/20</span><div class="cd-overlay"></div></div>
@@ -225,7 +225,7 @@
         let lastCastTime = 0; 
 
         const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️', sniper:'🔫' };
-        const LIMITS = { sword:40, tank:40, assassin:40, bow:30, mage:30, healer:30, sniper:30, cannon:15 };
+        const LIMITS = { sword:20, tank:15, assassin:15, bow:15, mage:20, healer:15, sniper:10, cannon:15 };
 
         // --- MENU & LOBBY ---
         function toggleBot(){ document.getElementById('botOpt').style.display = document.getElementById('gMode').value==='bot'?'block':'none'; }
