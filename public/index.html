@@ -94,11 +94,11 @@
         .dmg { position: absolute; color: #ff4757; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
         .heal-text { position: absolute; color: #2ed573; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
 
-        /* ปรับตำแหน่ง Energy ไปขวาล่าง */
+        /* ปรับตำแหน่ง Energy ให้สูงขึ้นอีกเพื่อไม่ให้บังการ์ดแถวบน */
         .hud-bottom { 
             position: absolute; 
-            bottom: 120px; 
-            right: 10px; /* ย้ายไปขวา */
+            bottom: 220px; /* แก้ไข: ดันขึ้นจาก 120px เป็น 220px */
+            right: 10px; 
             width: auto; 
             text-align: right; 
             z-index: 100; 
@@ -246,7 +246,7 @@
 
         const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️', sniper:'🔫' };
         
-        // *** FIX: อัปเดต LIMITS ให้ตรงกับ Server เป๊ะๆ (อันที่น้อยๆ) ***
+        // *** LIMITS CONFIG ***
         const LIMITS = { sword:20, bow:15, tank:15, mage:20, assassin:15, cannon:15, healer:15, sniper:10 };
 
         // --- MENU & LOBBY ---
@@ -403,7 +403,6 @@
                     el = document.createElement('div'); el.id=u.i; el.className='unit';
                     el.style.background=u.c; el.style.borderColor=u.c;
                     el.style.boxShadow=`0 0 5px ${u.c}`;
-                    // ไม่แสดงชื่อทหารแล้วเพื่อประหยัดเน็ตและไม่รก
                     el.innerHTML = `<div class="u-name"></div>${ICONS[u.t]}`;
                     uL.appendChild(el);
                 }
@@ -444,7 +443,7 @@
                     const cost = parseInt(c.querySelector('.c-cost').innerText);
                     const type = c.id.replace('card-','');
                     const curCount = myCounts[type] || 0;
-                    const maxCount = LIMITS[type]; // ใช้ Limits ตัวใหม่ที่ถูกต้อง
+                    const maxCount = LIMITS[type]; 
                     const limText = document.getElementById('lim-' + type);
                     if(limText) limText.innerText = `${curCount}/${maxCount}`;
                     if(eng < cost || curCount >= maxCount) c.classList.add('disabled'); else c.classList.remove('disabled');
