@@ -19,7 +19,7 @@ const SPECS = {
     bow:      { hp: 20,  dmg: 5,  range: 300, speed: 2.5, size: 30, cost: 45, atkRate: 1000 },
     tank:     { hp: 150, dmg: 5,  range: 50,  speed: 2.5, size: 36, cost: 75, atkRate: 1500 },
     mage:     { hp: 30,  dmg: 10,  range: 250, speed: 2.0, size: 30, cost: 125, atkRate: 1000, type:'aoe', radius: 40 },
-    assassin: { hp: 15,  dmg: 5, range: 65,  speed: 4.5, size: 25, cost: 80, atkRate: 500, special: 'jump', type: 'hybrid', radius: 175 },
+    assassin: { hp: 15,  dmg: 5, range: 65,  speed: 4.5, size: 25, cost: 80, atkRate: 500, special: 'jump', type: 'hybrid', radius: 100 },
     cannon:   { hp: 70,  dmg: 20, range: 350, speed: 1.5, size: 40, cost: 175, atkRate: 4500, type:'aoe', radius: 125 },
     healer:   { hp: 25,  dmg: 0,  range: 150, speed: 2.5, size: 28, cost: 50, atkRate: 3000, type: 'support', radius: 195 }
 };
