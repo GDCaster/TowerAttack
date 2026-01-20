@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Battle War: Smooth & Sniper Fix</title>
+    <title>Battle War: Optimized</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -58,7 +58,8 @@
         }
         .unit.walk { animation: walkAnim 0.5s infinite linear; }
         .unit.attack { animation: atkAnim 0.2s linear; }
-        .u-name { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); font-size: 10px; color: white; white-space: nowrap; font-weight: bold; text-shadow: 1px 1px 0 #000; pointer-events: none; }
+        /* ซ่อนชื่อทหารในหน้าจอเล่นเพื่อประหยัดเน็ต */
+        .u-name { display: none; }
 
         .hp-bar { width: 80px; height: 6px; background: #333; margin: 0 auto; border-radius: 3px; overflow: hidden; }
         .hp-val { height: 100%; width: 100%; transition: width 0.2s; }
@@ -83,7 +84,6 @@
             box-shadow: 0 0 10px red;
             background: rgba(255, 0, 0, 0.1);
             pointer-events: none;
-            /* ทำให้ Scope ลื่นด้วย */
             transition: left 0.15s linear, top 0.15s linear;
             animation: spinScope 1s infinite linear;
         }
@@ -94,8 +94,28 @@
         .dmg { position: absolute; color: #ff4757; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
         .heal-text { position: absolute; color: #2ed573; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
 
-        .hud-bottom { position: absolute; bottom: 120px; width: 100%; text-align: center; z-index: 100; pointer-events: none; }
-        .energy { background: rgba(0,0,0,0.8); color: var(--gold); padding: 5px 20px; border-radius: 20px; border: 1px solid var(--gold); font-size: 24px; font-weight: bold; display: inline-block; }
+        /* ปรับตำแหน่ง Energy ไปขวาล่าง */
+        .hud-bottom { 
+            position: absolute; 
+            bottom: 120px; 
+            right: 10px; /* ย้ายไปขวา */
+            width: auto; 
+            text-align: right; 
+            z-index: 100; 
+            pointer-events: none; 
+        }
+        .energy { 
+            background: rgba(0,0,0,0.8); 
+            color: var(--gold); 
+            padding: 5px 20px; 
+            border-radius: 20px; 
+            border: 1px solid var(--gold); 
+            font-size: 24px; 
+            font-weight: bold; 
+            display: inline-block; 
+            min-width: 120px;
+            text-align: center;
+        }
         
         .dock { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 100; width: 98%; max-width: 700px; justify-content: center; flex-wrap: wrap; }
         .card { width: 62px; height: 75px; background: #222; border: 1px solid #444; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.1s; overflow: hidden; flex-shrink: 0; }
@@ -126,7 +146,7 @@
 
     <div id="menuScreen" class="screen active">
         <h1 style="color:var(--gold); font-size:40px;">BATTLE WAR</h1>
-        <p style="color:#777; margin-bottom:20px;">Smoother & Sniper Fix</p>
+        <p style="color:#777; margin-bottom:20px;">Low Data Usage Mode</p>
         <input type="text" id="pName" placeholder="ชื่อตัวละคร" maxlength="10">
         
         <button class="btn btn-blue" style="width:80%; max-width:300px; padding:15px; font-size:20px;" onclick="startMatchmaking()">🔍 Auto Match (1v1)</button>
@@ -225,7 +245,9 @@
         let lastCastTime = 0; 
 
         const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️', sniper:'🔫' };
-        const LIMITS = { sword:20, tank:15, assassin:15, bow:15, mage:20, healer:15, sniper:10, cannon:15 };
+        
+        // *** FIX: อัปเดต LIMITS ให้ตรงกับ Server เป๊ะๆ (อันที่น้อยๆ) ***
+        const LIMITS = { sword:20, bow:15, tank:15, mage:20, assassin:15, cannon:15, healer:15, sniper:10 };
 
         // --- MENU & LOBBY ---
         function toggleBot(){ document.getElementById('botOpt').style.display = document.getElementById('gMode').value==='bot'?'block':'none'; }
@@ -300,7 +322,6 @@
             toScr('gameScreen'); 
             initCamera(); 
 
-            // *** FIX LIMIT DISPLAY: Update mySide here too ***
             const me = data.players.find(p => p.id === socket.id);
             if(me) mySide = me.side;
 
@@ -348,70 +369,57 @@
         socket.on('world_update', d=>{
             const now = Date.now();
             
-            // Energy Sync Logic
+            // Energy Sync
             if (now - lastCastTime < 600 && d.myEng > eng) {
                 eng += 0.2; 
             } else {
                 eng = d.myEng; 
             }
+            // *** FIX: ตัดทศนิยมออก ***
             document.getElementById('eng').innerText = Math.floor(eng); 
             
             const myCounts = {};
-            d.u.forEach(u => {
+            const exist = new Set();
+            
+            const uL = document.getElementById('uLayer');
+            const fxL = document.getElementById('fxLayer');
+
+            // *** OPTIMIZATION: รับข้อมูลแบบ Array ***
+            d.u.forEach(data => {
+                // unpack array: [id, type, side, x, y, hp, action, aimTarget, color]
+                const u = { 
+                    i: data[0], t: data[1], s: data[2], 
+                    x: data[3], y: data[4], h: data[5], 
+                    act: data[6], aimTarget: data[7], c: data[8] 
+                };
+
                 if(u.s === mySide) {
                     myCounts[u.t] = (myCounts[u.t] || 0) + 1;
                 }
-            });
 
-            document.querySelectorAll('.card').forEach(c=>{
-                if (!c.classList.contains('cooldown-active')) {
-                    const cost = parseInt(c.querySelector('.c-cost').innerText);
-                    const type = c.id.replace('card-','');
-                    const curCount = myCounts[type] || 0;
-                    const maxCount = LIMITS[type];
-                    const limText = document.getElementById('lim-' + type);
-                    if(limText) limText.innerText = `${curCount}/${maxCount}`;
-                    if(eng < cost || curCount >= maxCount) c.classList.add('disabled'); else c.classList.remove('disabled');
-                }
-            });
-
-            document.getElementById('hpL').style.width = (d.b.left/10)+'%';
-            document.getElementById('hpR').style.width = (d.b.right/10)+'%';
-
-            const uL = document.getElementById('uLayer');
-            const fxL = document.getElementById('fxLayer');
-            const exist = new Set();
-            
-            d.u.forEach(u=>{
                 exist.add(u.i);
                 let el = document.getElementById(u.i);
                 if(!el){
                     el = document.createElement('div'); el.id=u.i; el.className='unit';
                     el.style.background=u.c; el.style.borderColor=u.c;
                     el.style.boxShadow=`0 0 5px ${u.c}`;
-                    el.innerHTML = `<div class="u-name">${u.n}</div>${ICONS[u.t]}`;
+                    // ไม่แสดงชื่อทหารแล้วเพื่อประหยัดเน็ตและไม่รก
+                    el.innerHTML = `<div class="u-name"></div>${ICONS[u.t]}`;
                     uL.appendChild(el);
                 }
                 
-                // CSS Transition จะทำให้บรรทัดนี้ลื่นขึ้นอัตโนมัติ
                 el.style.left = u.x+'px'; el.style.top = u.y+'px';
                 
                 el.classList.remove('walk', 'attack');
                 if(u.act === 'walk') el.classList.add('walk');
                 else if(u.act === 'attack') el.classList.add('attack');
 
+                // Scope Logic
                 if(u.aimTarget) {
                     let targetEl = document.getElementById(u.aimTarget);
-                    // ถ้าเล็งฐาน (aimTarget คือ base_left/right) ให้หาตำแหน่งจาก class base เอา
-                    if(!targetEl && u.aimTarget.startsWith('base')) {
-                        // ปรับให้ scope อยู่กลางฐาน
-                         // ไม่ต้องทำ logic ซับซ้อน แค่แสดง Scope ที่ตัว Sniper ก็พอ
-                    }
-
                     let scopeId = 'scope_' + u.i;
                     let scopeEl = document.getElementById(scopeId);
                     
-                    // เป้าหมายมีอยู่จริง หรือเป็นการเล็งฐาน
                     if(targetEl || u.aimTarget.startsWith('base')) {
                         if(!scopeEl) {
                             scopeEl = document.createElement('div'); scopeEl.id = scopeId; scopeEl.className = 'aim-scope'; fxL.appendChild(scopeEl);
@@ -419,7 +427,6 @@
                         if (targetEl) {
                             scopeEl.style.left = targetEl.style.left; scopeEl.style.top = targetEl.style.top;
                         } else {
-                            // เล็งฐาน
                             const isLeftBase = u.aimTarget.includes('left');
                             scopeEl.style.left = isLeftBase ? '100px' : '1500px';
                             scopeEl.style.top = '450px';
@@ -431,40 +438,35 @@
                 }
             });
 
+            // Update Cards (Limits)
+            document.querySelectorAll('.card').forEach(c=>{
+                if (!c.classList.contains('cooldown-active')) {
+                    const cost = parseInt(c.querySelector('.c-cost').innerText);
+                    const type = c.id.replace('card-','');
+                    const curCount = myCounts[type] || 0;
+                    const maxCount = LIMITS[type]; // ใช้ Limits ตัวใหม่ที่ถูกต้อง
+                    const limText = document.getElementById('lim-' + type);
+                    if(limText) limText.innerText = `${curCount}/${maxCount}`;
+                    if(eng < cost || curCount >= maxCount) c.classList.add('disabled'); else c.classList.remove('disabled');
+                }
+            });
+
+            document.getElementById('hpL').style.width = (d.b.left/10)+'%';
+            document.getElementById('hpR').style.width = (d.b.right/10)+'%';
+
             Array.from(uL.children).forEach(e=>{ if(!exist.has(e.id)) e.remove(); });
             
-            // Remove Old Scopes
             document.querySelectorAll('.aim-scope').forEach(scope => {
                 const sniperId = scope.id.replace('scope_', '');
                 if (!exist.has(sniperId)) scope.remove();
             });
 
-            // Handle Projectiles (With Smoothness)
-            const projExist = new Set();
-            d.proj.forEach((p, idx)=>{
-                // ใช้ key ผสมตำแหน่งเพื่อให้ CSS Transition ทำงานถูกต้องกับ element เดิม
-                // แต่เนื่องจาก Projectile เกิดใหม่ตลอด เราอาจจะใช้การวาดทับ แต่ใส่ Transition ไว้ที่ Class แล้ว
-                const pId = `proj_${idx}`; // ID ชั่วคราว (ถ้าระบบซับซ้อนกว่านี้ควรมี ID จาก Server)
-                // เพื่อความง่าย ลบสร้างใหม่แบบเดิม แต่ใส่ CSS Transition ไว้ มันจะดูดีขึ้นนิดหน่อย
-                // แต่ถ้าจะให้ดีที่สุด ต้องมี ID จาก Server
-                // *ในเคสนี้ ขอใช้ระบบเดิม แต่พึ่ง CSS Transition ที่ความเร็วสูง*
-                
-                // เพื่อให้ Smooth จริงๆ ต้องไม่ลบแล้วสร้างใหม่ทุกเฟรม
-                // แต่โค้ด Server ปัจจุบันไม่ได้ส่ง ID กระสุนมา
-                // ดังนั้นเราจะ Clear แล้วสร้างใหม่ (ข้อจำกัด) -> แต่ด้วย CSS Transition 0.1s มันจะพยายาม Interpolate "ตำแหน่งเริ่มต้น" (ถ้า Browser ฉลาดพอ) 
-                // หรือถ้าจะเอาชัวร์ ต้องแก้ Server ให้ส่ง ID กระสุน แต่เพื่อไม่ให้แก้เยอะเกินไป
-                // เราจะใช้วิธีเดิม แต่ปรับ CSS ให้รับมือได้ดีที่สุด
-            });
-            
-            // *หมายเหตุ:* เนื่องจาก Server Code เดิมไม่ได้ส่ง ID ของ Projectile มา (ส่งมาเป็น Array แบนๆ)
-            // การทำ Client Prediction สำหรับกระสุนจะยากถ้าไม่มี ID
-            // ดังนั้นเราจะใช้วิธี "ลบแล้วสร้างใหม่" เหมือนเดิม แต่ปรับความเร็ว Server Tick ให้สัมพันธ์กัน
-            // ซึ่งใน Code Server เราปรับให้ Sniper ยิงแล้วมี Effect เส้นแทน ส่วนกระสุนอื่นๆ ยังคงทำงานเดิม
-            
+            // Projectiles (Array Format)
             document.querySelectorAll('.proj').forEach(e=>e.remove());
-            d.proj.forEach(p=>{
-                const el = document.createElement('div'); el.className=`proj ${p.t}`;
-                el.style.left=p.x+'px'; el.style.top=p.y+'px';
+            d.proj.forEach(pData=>{
+                // [x, y, type]
+                const el = document.createElement('div'); el.className=`proj ${pData[2]}`;
+                el.style.left=pData[0]+'px'; el.style.top=pData[1]+'px';
                 fxL.appendChild(el);
             });
 

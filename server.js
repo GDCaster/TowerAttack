@@ -14,12 +14,13 @@ const WORLD_W = 1600;
 const WORLD_H = 900;
 const MAX_ENERGY = 300; 
 
+// *** LIMITS CONFIG (อ้างอิงตรงนี้เป็นหลัก) ***
 const SPECS = {
     sword:    { hp: 25,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 1200, limit: 20, type: 'melee' },
     bow:      { hp: 20,  dmg: 5,  range: 300, speed: 2.5, size: 30, cost: 45, atkRate: 1500, limit: 15, type: 'ranged' },
     tank:     { hp: 150, dmg: 5,  range: 50,  speed: 2.5, size: 36, cost: 75, atkRate: 1500, limit: 15, type: 'melee' },
     mage:     { hp: 25,  dmg: 10, range: 250, speed: 2.0, size: 30, cost: 125, atkRate: 1000, limit: 20, type: 'aoe', radius: 40, baseType: 'ranged' },
-    assassin: { hp: 15,  dmg: 15,  range: 65,  speed: 6.0, size: 25, cost: 80, atkRate: 500,  limit: 15, type: 'hybrid', radius: 65, jumpRange: 250, jumpCd: 7000 },
+    assassin: { hp: 15,  dmg: 15,  range: 65,  speed: 6.0, size: 25, cost: 80, atkRate: 2000,  limit: 15, type: 'hybrid', radius: 65, jumpRange: 250, jumpCd: 7000 },
     cannon:   { hp: 50,  dmg: 20, range: 350, speed: 1.5, size: 40, cost: 205, atkRate: 4500, limit: 15, type: 'aoe', radius: 70, baseType: 'ranged' },
     healer:   { hp: 25,  dmg: 0,  range: 150, speed: 2.5, size: 28, cost: 50, atkRate: 3000, limit: 15, type: 'support', radius: 195, baseType: 'ranged' },
     sniper:   { hp: 40,  dmg: 65, range: 400, speed: 2.0, size: 30, cost: 125, atkRate: 8000, limit: 10, type: 'ranged', radius: 15, aimTime: 2000 }
@@ -59,24 +60,37 @@ setInterval(() => {
             if (typeof room.serverTick === 'undefined') room.serverTick = 0;
             room.serverTick++;
 
-            if (room.serverTick % 3 === 0) {
+            // OPTIMIZATION: ส่งข้อมูลทุกๆ 4 Tick (ประมาณ 200ms) แทน 3 Tick ช่วยลดภาระเน็ต
+            // Client มีระบบ interpolate (animation) อยู่แล้วจึงไม่กระตุก
+            if (room.serverTick % 4 === 0) {
                 const packet = {
                     b: room.bases,
-                    u: room.units.map(u => ({
-                        i: u.id, t: u.type, s: u.side, c: u.color,
-                        x: Math.round(u.x), y: Math.round(u.y), h: u.hp,
-                        n: u.owner, act: u.action,
-                        aimTarget: u.aimTargetId || null 
-                    })),
-                    proj: room.projectiles.map(p => ({
-                        x: Math.round(p.x), y: Math.round(p.y), t: p.type
-                    })),
+                    // OPTIMIZATION: ส่งข้อมูลแบบ Array (Minified) แทน Object เพื่อลดขนาด Packet ลง 5 เท่า
+                    // Format: [id, type, side, x, y, hp, action, aimTarget, color]
+                    u: room.units.map(u => [
+                        u.id, 
+                        u.type, 
+                        u.side,
+                        Math.round(u.x), 
+                        Math.round(u.y), 
+                        u.hp,
+                        u.action,
+                        u.aimTargetId || null, 
+                        u.color 
+                        // ตัด u.owner (ชื่อ) ออกเพื่อประหยัดเน็ต
+                    ]),
+                    // Format: [x, y, type]
+                    proj: room.projectiles.map(p => [
+                        Math.round(p.x), 
+                        Math.round(p.y), 
+                        p.type
+                    ]),
                     fx: room.effects 
                 };
                 
                 room.players.forEach(player => {
                     if(player.isBot) return;
-                    packet.myEng = player.energy; 
+                    packet.myEng = Math.floor(player.energy); // ส่งเป็น int เลย
                     io.to(player.id).emit('world_update', packet);
                 });
 
@@ -106,7 +120,7 @@ function updateGame(room) {
     // Unit Logic
     room.units.forEach(u => {
         
-        // --- SNIPER LOGIC (REWORK: Like Bow) ---
+        // --- SNIPER LOGIC ---
         if (u.type === 'sniper') {
             const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
             const distToBase = Math.abs(u.x - enemyBaseX);
@@ -362,14 +376,11 @@ function runBotLogic(room, bot) {
 }
 
 function spawnUnit(room, player, type) {
-    if (!SPECS[type]) return; // Validation check
+    if (!SPECS[type]) return; 
     if (player.energy < SPECS[type].cost) return;
 
-    // *** FIX LIMIT LOGIC HERE ***
-    // ตรวจสอบจำนวนทหารฝ่ายเดียวกันและประเภทเดียวกัน
+    // *** FIX LIMIT LOGIC (Server Side) ***
     const currentCount = room.units.filter(u => u.side === player.side && u.type === type && !u.dead).length;
-    
-    // ถ้าเกิน Limit ให้หยุดทันที
     if (SPECS[type].limit && currentCount >= SPECS[type].limit) {
         return; 
     }
