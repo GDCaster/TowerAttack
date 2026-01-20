@@ -22,7 +22,6 @@ const SPECS = {
     assassin: { hp: 15,  dmg: 5,  range: 65,  speed: 6.0, size: 25, cost: 80, atkRate: 500,  limit: 40, type: 'hybrid', radius: 65, jumpRange: 250, jumpCd: 7000 },
     cannon:   { hp: 50,  dmg: 20, range: 350, speed: 1.5, size: 40, cost: 175, atkRate: 4500, limit: 15, type: 'aoe', radius: 75, baseType: 'ranged' },
     healer:   { hp: 25,  dmg: 0,  range: 150, speed: 2.5, size: 28, cost: 50, atkRate: 3000, limit: 30, type: 'support', radius: 195, baseType: 'ranged' },
-    // SNIPER UPDATE
     sniper:   { hp: 40,  dmg: 75, range: 600, speed: 2.0, size: 30, cost: 75, atkRate: 8000, limit: 30, type: 'ranged', radius: 15, aimTime: 1500 }
 };
 
@@ -77,7 +76,8 @@ setInterval(() => {
                 
                 room.players.forEach(player => {
                     if(player.isBot) return;
-                    packet.myEng = Math.floor(player.energy);
+                    // *FIXED: ส่งค่าเป็น Float เพื่อความแม่นยำ (ไม่ Math.floor)
+                    packet.myEng = player.energy; 
                     io.to(player.id).emit('world_update', packet);
                 });
 
@@ -203,7 +203,6 @@ function updateGame(room) {
                     room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.healer.radius, t: 'healer' });
                 }
             } else {
-                // Healer always follows base direction, no aggro needed
                 u.x += (u.side === 'left' ? 1 : -1) * u.speed;
                 u.action = 'walk';
             }
@@ -241,15 +240,12 @@ function updateGame(room) {
                     }
                 }
             }
-            // Assassin combat (same as normal logic below essentially but prefers jump)
-            // Let it fall through to normal logic for walking/attacking if not jumping
         }
 
-        // --- NORMAL UNITS LOGIC (Sword, Bow, Mage, Cannon, Tank, Assassin-Walk) ---
+        // --- NORMAL UNITS LOGIC ---
         let target = null;
         let minDist = 999;
 
-        // Find closest enemy
         room.units.forEach(o => {
             if (o.side !== u.side && !o.dead) {
                 const dist = Math.hypot(u.x - o.x, u.y - o.y);
@@ -262,7 +258,6 @@ function updateGame(room) {
         const canHitBase = distToBase <= SPECS[u.type].range;
         
         if (canHitBase) {
-            // Hit Base Priority if in range
             if (now - u.lastAttack > SPECS[u.type].atkRate) {
                 u.lastAttack = now; u.action = 'attack';
                 const targetSide = u.side === 'left' ? 'right' : 'left';
@@ -271,7 +266,6 @@ function updateGame(room) {
                 if (room.bases[targetSide] <= 0) endGame(room, u.side);
             }
         } else if (target && minDist <= SPECS[u.type].range) {
-            // Attack Unit
             if (now - u.lastAttack > SPECS[u.type].atkRate) {
                 u.lastAttack = now; u.action = 'attack';
                 if (['mage', 'cannon', 'bow'].includes(u.type)) { spawnProjectile(room, u, target); } 
@@ -282,10 +276,7 @@ function updateGame(room) {
                 }
             }
         } else {
-            // --- WALK LOGIC (AGGRO UPDATE) ---
             u.action = 'walk';
-            
-            // If target exists, walk towards target
             if (target) {
                 const dx = target.x - u.x;
                 const dy = target.y - u.y;
@@ -293,10 +284,8 @@ function updateGame(room) {
                 u.x += Math.cos(angle) * u.speed;
                 u.y += Math.sin(angle) * u.speed;
             } else {
-                // No target, walk to base
                 const dir = u.side === 'left' ? 1 : -1;
                 u.x += dir * u.speed;
-                // Keep in lane Y
                 const mid = WORLD_H / 2;
                 if (u.y < mid - 100) u.y += 0.5;
                 if (u.y > mid + 100) u.y -= 0.5;

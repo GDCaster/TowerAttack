@@ -84,11 +84,9 @@
         .dmg { position: absolute; color: #ff4757; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
         .heal-text { position: absolute; color: #2ed573; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
 
-        /* ปรับตำแหน่ง Energy ลงมาข้างล่าง */
         .hud-bottom { position: absolute; bottom: 120px; width: 100%; text-align: center; z-index: 100; pointer-events: none; }
         .energy { background: rgba(0,0,0,0.8); color: var(--gold); padding: 5px 20px; border-radius: 20px; border: 1px solid var(--gold); font-size: 24px; font-weight: bold; display: inline-block; }
         
-        /* ดันการ์ดขึ้นมานิดหน่อยเพื่อให้เห็น Limit */
         .dock { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 100; width: 98%; max-width: 700px; justify-content: center; flex-wrap: wrap; }
         .card { width: 62px; height: 75px; background: #222; border: 1px solid #444; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.1s; overflow: hidden; flex-shrink: 0; }
         .card:active { transform: scale(0.95); border-color: var(--gold); }
@@ -214,6 +212,8 @@
         const socket = io();
         let rid=null, mySide=null, eng=0;
         let timerInterval = null;
+        let lastCastTime = 0; // *FIXED: ตัวแปรจับเวลา Sync
+
         const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️', sniper:'🔫' };
         const LIMITS = { sword:40, tank:40, assassin:40, bow:30, mage:30, healer:30, sniper:30, cannon:15 };
 
@@ -303,6 +303,13 @@
             if(cur >= max) return; 
 
             if(eng >= c && !cardEl.classList.contains('cooldown-active')) { 
+                
+                // *FIXED: หักพลังงานทันที (Prediction)
+                eng -= c; 
+                document.getElementById('eng').innerText = Math.floor(eng);
+                lastCastTime = Date.now(); // บันทึกเวลา
+                // ---------------------------------
+
                 socket.emit('spawn_request', { roomId:rid, type:t }); 
                 cardEl.classList.add('cooldown-active'); 
                 void cardEl.offsetWidth; 
@@ -327,9 +334,20 @@
         });
 
         socket.on('world_update', d=>{
-            // แก้ไขการแสดงผลพลังงาน
-            eng = d.myEng; 
-            document.getElementById('eng').innerText = eng; // ไม่ต้องบวก "/300" ซ้ำ เพราะใน HTML มีเขียนรอไว้แล้ว
+            // *FIXED: Logic Sync แก้ปัญหาตัวเลขตีกัน
+            const now = Date.now();
+            
+            // ถ้าเพิ่งกดสกิลไม่ถึง 600ms แล้ว Server ส่งค่าพลังงานที่ "มากกว่า" ปัจจุบันมา (แปลว่าเป็นข้อมูลเก่า)
+            if (now - lastCastTime < 600 && d.myEng > eng) {
+                // ให้ใช้ค่าเดิมของเรา (ที่หักไปแล้ว) และแอบบวก Regen ทิพย์ให้เนียนๆ
+                eng += 0.2; 
+            } else {
+                // ถ้าปกติ ก็ Sync ตาม Server
+                eng = d.myEng; 
+            }
+            
+            document.getElementById('eng').innerText = Math.floor(eng); 
+            // -------------------------------------------
             
             const myCounts = {};
             d.u.forEach(u => {
