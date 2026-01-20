@@ -23,8 +23,8 @@ const SPECS = {
     sword:    { hp: 25,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 1200, limit: 20, type: 'melee' },
     bow:      { hp: 20,  dmg: 5,  range: 300, speed: 2.5, size: 30, cost: 45, atkRate: 1500, limit: 15, type: 'ranged' },
     // TANK: ปรับราคา 100, เพิ่มสกิล Charge
-    tank:     { hp: 1000, dmg: 10,  range: 50,  speed: 2.5, size: 36, cost: 100, atkRate: 1200, limit: 15, type: 'melee', 
-                chargeSpeed: 3.75, impactRadius: 150, stunDur: 2500, knockback: 80 }, 
+    tank:     { hp: 500, dmg: 10,  range: 50,  speed: 2.5, size: 36, cost: 100, atkRate: 1200, limit: 15, type: 'melee', 
+                chargeSpeed: 3.75, impactRadius: 150, stunDur: 2500, knockback: 40 }, 
     mage:     { hp: 25,  dmg: 10, range: 250, speed: 2.0, size: 30, cost: 125, atkRate: 1000, limit: 20, type: 'aoe', radius: 40, baseType: 'ranged' },
     assassin: { hp: 15,  dmg: 15,  range: 65,  speed: 6.0, size: 25, cost: 80, atkRate: 2000,  limit: 15, type: 'hybrid', radius: 65, jumpRange: 250, jumpCd: 7000 },
     cannon:   { hp: 50,  dmg: 20, range: 350, speed: 1.5, size: 40, cost: 205, atkRate: 4500, limit: 15, type: 'aoe', radius: 70, baseType: 'ranged' },
