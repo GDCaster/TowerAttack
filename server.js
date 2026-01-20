@@ -39,7 +39,7 @@ const COLORS = [
 let rooms = {};
 let matchQueue = [];
 
-// Game Loop (50ms = 20 ticks/sec)
+// Game Loop
 setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
@@ -59,7 +59,6 @@ setInterval(() => {
             if (typeof room.serverTick === 'undefined') room.serverTick = 0;
             room.serverTick++;
 
-            // ส่งข้อมูลทุกๆ 3 tick (ประมาณ 150ms) เพื่อลดภาระ แต่ Client จะใช้ CSS Transition ช่วยให้ลื่น
             if (room.serverTick % 3 === 0) {
                 const packet = {
                     b: room.bases,
@@ -107,116 +106,76 @@ function updateGame(room) {
     // Unit Logic
     room.units.forEach(u => {
         
-        // --- IMPROVED SNIPER LOGIC ---
+        // --- SNIPER LOGIC (REWORK: Like Bow) ---
         if (u.type === 'sniper') {
             const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
             const distToBase = Math.abs(u.x - enemyBaseX);
             
-            // 1. Cooldown Phase: ถ้าเพิ่งยิงไป ให้ยืนนิ่งๆ รีโหลด (ไม่เดินมั่ว)
-            if (now - u.lastAttack < SPECS.sniper.atkRate) {
-                u.action = 'idle';
-                u.aiming = false;
-                u.aimTargetId = null;
-                return;
-            }
-
-            // 2. Aiming & Firing Phase
+            // 1. Aiming Phase
             if (u.aiming) {
                 u.action = 'idle';
                 
-                // ตรวจสอบว่าเป้าหมายยังอยู่ไหม
+                // ตรวจสอบว่าเป้าหมายยังอยู่ไหม (ถ้าตายไปแล้วให้เลิกเล็ง)
                 let targetExists = false;
-                let tX = 0, tY = 0;
-
                 if (u.aimTargetType === 'base') {
-                     if (room.bases[u.side === 'left' ? 'right' : 'left'] > 0) {
-                         targetExists = true; tX = enemyBaseX; tY = WORLD_H/2;
-                     }
+                     if (room.bases[u.side === 'left' ? 'right' : 'left'] > 0) targetExists = true;
                 } else {
                     const foundTarget = room.units.find(e => e.id === u.aimTargetId && !e.dead);
-                    if (foundTarget) { 
-                        targetExists = true; 
-                        tX = foundTarget.x; tY = foundTarget.y; 
-                    }
+                    if (foundTarget) targetExists = true;
                 }
 
-                // ถ้าเป้าหมายหายไประหว่างเล็ง ให้ยกเลิกเล็ง
-                if (!targetExists) { 
-                    u.aiming = false; 
-                    u.aimTargetId = null; 
-                    return; 
-                }
+                if (!targetExists) { u.aiming = false; u.aimTargetId = null; return; }
 
-                // เมื่อเล็งครบเวลา -> ยิงทันที (Guaranteed Hit)
+                // เล็งเสร็จ -> ยิงกระสุน (เหมือนธนู)
                 if (now - u.aimStartTime >= SPECS.sniper.aimTime) {
-                    u.lastAttack = now; 
-                    u.aiming = false; 
-                    u.aimTargetId = null;
-
-                    // สร้าง Effect เส้นกระสุน (Visual Only)
-                    room.projectiles.push({
-                         x: u.x, y: u.y, tx: tX, ty: tY, speed: 50, dmg: 0, 
-                         type: 'sniper_bullet', side: u.side, visualOnly: true 
-                    });
-
-                    // ทำดาเมจทันที
+                    u.lastAttack = now;
+                    u.aiming = false;
+                    
                     if (u.aimTargetType === 'base') {
-                        const targetSide = u.side === 'left' ? 'right' : 'left';
-                        room.bases[targetSide] -= u.dmg;
-                        room.effects.push({ type: 'dmg', x: tX, y: tY, val: u.dmg });
-                        if (room.bases[targetSide] <= 0) endGame(room, u.side);
+                        // ยิงฐาน: ยิงกระสุนออกไป
+                        spawnProjectile(room, u, { id: null, x: enemyBaseX, y: WORLD_H/2, dead: false });
                     } else {
+                        // ยิงคน: ยิงกระสุนติดตาม
                         const targetUnit = room.units.find(e => e.id === u.aimTargetId);
                         if (targetUnit) {
-                            targetUnit.hp -= u.dmg;
-                            room.effects.push({ type: 'dmg', x: targetUnit.x, y: targetUnit.y, val: u.dmg });
-                            if (targetUnit.hp <= 0) targetUnit.dead = true;
+                            spawnProjectile(room, u, targetUnit);
                         }
                     }
+                    u.aimTargetId = null;
                 }
                 return;
             }
 
-            // 3. Finding Target Phase
+            // 2. Cooldown Phase (Reloading) - ยืนนิ่งๆ ไม่เดิน
+            if (now - u.lastAttack < SPECS.sniper.atkRate) {
+                u.action = 'idle'; 
+                return;
+            }
+
+            // 3. Find Target
             let potentialTarget = null;
             let minDist = 999;
             
-            // หาศัตรูที่ใกล้ที่สุดในระยะ
             room.units.forEach(o => {
                 if (o.side !== u.side && !o.dead) {
                     const dist = Math.hypot(u.x - o.x, u.y - o.y);
-                    if (dist < minDist && dist <= SPECS.sniper.range) { 
-                        minDist = dist; 
-                        potentialTarget = o; 
-                    }
+                    if (dist < minDist && dist <= SPECS.sniper.range) { minDist = dist; potentialTarget = o; }
                 }
             });
 
             if (potentialTarget) {
-                // เจอศัตรู -> เริ่มเล็ง
-                u.aiming = true; 
-                u.aimStartTime = now; 
-                u.aimTargetId = potentialTarget.id; 
-                u.aimTargetType = 'unit'; 
-                u.action = 'idle';
+                u.aiming = true; u.aimStartTime = now; u.aimTargetId = potentialTarget.id; u.aimTargetType = 'unit'; u.action = 'idle';
             } else if (distToBase <= SPECS.sniper.range) {
-                // เจอฐาน -> เริ่มเล็ง
-                u.aiming = true; 
-                u.aimStartTime = now; 
-                u.aimTargetId = 'base_' + (u.side === 'left' ? 'right' : 'left'); 
-                u.aimTargetType = 'base'; 
-                u.action = 'idle';
+                u.aiming = true; u.aimStartTime = now; u.aimTargetId = 'base_' + (u.side === 'left' ? 'right' : 'left'); u.aimTargetType = 'base'; u.action = 'idle';
             } else {
-                // ไม่เจออะไร -> เดินหน้า
                 u.x += (u.side === 'left' ? 1 : -1) * u.speed;
                 u.action = 'walk';
-                // จัดระเบียบแถวเดิน
                 const mid = WORLD_H / 2;
                 if (u.y < mid - 100) u.y += 0.5;
                 if (u.y > mid + 100) u.y -= 0.5;
             }
             return;
-        } // End Sniper
+        }
 
         u.action = 'idle';
 
@@ -250,7 +209,7 @@ function updateGame(room) {
             return;
         }
 
-        // --- ASSASSIN LOGIC ---
+        // --- ASSASSIN LOGIC (FIXED DAMAGE) ---
         if (u.type === 'assassin') {
             const enemiesInJumpRange = room.units.filter(e => e.side !== u.side && !e.dead && Math.hypot(u.x - e.x, u.y - e.y) <= SPECS.assassin.jumpRange);
             let jumpTarget = null;
@@ -271,11 +230,20 @@ function updateGame(room) {
                         const offset = u.side === 'left' ? 40 : -40;
                         u.x = jumpTarget.x + offset; u.y = jumpTarget.y;
                         u.jumpReadyTime = now + SPECS.assassin.jumpCd;
+                        
+                        // Warp Effect
                         room.effects.push({ type: 'warp', x: u.x, y: u.y });
+                        
+                        // *** FIXED: Deal 15 Damage Explicitly ***
                         jumpTarget.hp -= 15;
                         room.effects.push({ type: 'dmg', x: jumpTarget.x, y: jumpTarget.y, val: 15 });
                         room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.assassin.radius, t: 'assassin' });
-                        return; 
+                        
+                        // *** FIXED: Reset Attack Timer ***
+                        // บังคับให้รอ Cooldown ตีปกติ เพื่อไม่ให้ตีซ้ำซ้อนทันทีที่ลงพื้น
+                        u.lastAttack = now; 
+                        
+                        return; // จบเทิร์นของตัวนี้ทันที
                     }
                 }
             }
@@ -307,7 +275,8 @@ function updateGame(room) {
         } else if (target && minDist <= SPECS[u.type].range) {
             if (now - u.lastAttack > SPECS[u.type].atkRate) {
                 u.lastAttack = now; u.action = 'attack';
-                if (['mage', 'cannon', 'bow'].includes(u.type)) { spawnProjectile(room, u, target); } 
+                // เพิ่ม sniper เข้าไปในเงื่อนไข Projectile ด้วย เผื่อกรณีระยะประชิดหรือบั๊กหลุด
+                if (['mage', 'cannon', 'bow', 'sniper'].includes(u.type)) { spawnProjectile(room, u, target); } 
                 else {
                     target.hp -= u.dmg;
                     room.effects.push({ type: 'dmg', x: target.x, y: target.y, val: u.dmg });
@@ -336,10 +305,19 @@ function updateGame(room) {
 }
 
 function spawnProjectile(room, owner, target) {
+    let speed = 10;
+    if (owner.type === 'cannon') speed = 14;
+    if (owner.type === 'sniper') speed = 25; // กระสุนสไนเปอร์วิ่งเร็วมาก
+
     room.projectiles.push({
-        x: owner.x, y: owner.y, targetId: target.id, tx: target.x, ty: target.y, 
-        speed: owner.type === 'cannon' ? 14 : 10, dmg: SPECS[owner.type].dmg, 
-        radius: SPECS[owner.type].radius || 10, type: owner.type, side: owner.side
+        x: owner.x, y: owner.y, 
+        targetId: target.id, // เก็บ ID เป้าหมายไว้ติดตาม
+        tx: target.x, ty: target.y, 
+        speed: speed, 
+        dmg: SPECS[owner.type].dmg, 
+        radius: SPECS[owner.type].radius || 10, 
+        type: owner.type, 
+        side: owner.side
     });
 }
 
@@ -347,37 +325,51 @@ function updateProjectiles(room) {
     for (let i = room.projectiles.length - 1; i >= 0; i--) {
         const p = room.projectiles[i];
 
-        // ถ้าเป็นกระสุน Visual (Sniper) ให้วิ่งเร็วๆ แล้วหายไปเลย
-        if (p.visualOnly) {
-             const dx = p.tx - p.x, dy = p.ty - p.y;
-             const dist = Math.hypot(dx, dy);
-             if (dist < p.speed) {
-                 room.projectiles.splice(i, 1);
-             } else {
-                 const angle = Math.atan2(dy, dx);
-                 p.x += Math.cos(angle) * p.speed; p.y += Math.sin(angle) * p.speed;
-             }
-             continue;
-        }
-
+        // Logic ติดตามเป้าหมาย (Homing) เหมือนธนู
         if (p.targetId) {
             const target = room.units.find(u => u.id === p.targetId);
-            if (target && !target.dead) { p.tx = target.x; p.ty = target.y; }
+            if (target && !target.dead) { 
+                p.tx = target.x; 
+                p.ty = target.y; 
+            }
         }
+
         const dx = p.tx - p.x, dy = p.ty - p.y;
         const dist = Math.hypot(dx, dy);
 
+        // ถ้าถึงเป้าหมาย หรือวิ่งชนศัตรูระหว่างทาง
         if (dist < p.speed) {
+            let hit = false;
             room.units.forEach(u => {
                 if (u.side !== p.side && !u.dead) {
                     const d = Math.hypot(u.x - p.tx, u.y - p.ty);
-                    if (d <= p.radius) {
-                        u.hp -= p.dmg; room.effects.push({ type: 'dmg', x: u.x, y: u.y, val: p.dmg });
+                    // Sniper รัศมีเล็ก (15) แต่ถ้าถึงจุดหมายให้ถือว่าโดนเลย (เพราะเป็น Homing)
+                    // เพิ่มระยะเช็ค Hit ให้กว้างขึ้นนิดหน่อยสำหรับ Sniper เพื่อความชัวร์
+                    const hitRange = p.type === 'sniper' ? 30 : p.radius; 
+                    
+                    if (d <= hitRange) {
+                        u.hp -= p.dmg; 
+                        room.effects.push({ type: 'dmg', x: u.x, y: u.y, val: p.dmg });
                         if (u.hp <= 0) u.dead = true;
+                        hit = true;
                     }
                 }
             });
+
+            // ถ้าเป็น Sniper แล้วเล็งฐาน (ไม่มี targetId)
+            if (p.type === 'sniper' && !p.targetId && !hit) {
+                 // เช็คว่าใกล้ฐานไหม
+                 const enemyBaseX = p.side === 'left' ? WORLD_W - 100 : 100;
+                 if (Math.abs(p.tx - enemyBaseX) < 50) {
+                     const targetSide = p.side === 'left' ? 'right' : 'left';
+                     room.bases[targetSide] -= p.dmg;
+                     room.effects.push({ type: 'dmg', x: p.tx, y: p.ty, val: p.dmg });
+                     if (room.bases[targetSide] <= 0) endGame(room, p.side);
+                 }
+            }
+
             if (p.type === 'mage' || p.type === 'cannon') { room.effects.push({ type: 'aoe', x: p.tx, y: p.ty, r: p.radius, t: p.type }); }
+            
             room.projectiles.splice(i, 1);
         } else {
             const angle = Math.atan2(dy, dx);
