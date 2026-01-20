@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Battle War: Tank & Upgrade</title>
+    <title>Battle War: Sandbox Update</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -17,8 +17,6 @@
         @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
         @keyframes spinScope { 0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); } 50% { transform: translate(-50%, -50%) rotate(180deg) scale(0.8); } 100% { transform: translate(-50%, -50%) rotate(360deg) scale(1); } }
         @keyframes stunnedAnim { 0% { filter: brightness(1) sepia(0); } 50% { filter: brightness(0.5) sepia(1) hue-rotate(200deg); } 100% { filter: brightness(1) sepia(0); } }
-        
-        /* New Animation for Mage Shield/Invincibility */
         @keyframes shieldPulse { 0% { box-shadow: 0 0 0px #fff; } 50% { box-shadow: 0 0 15px #fff; } 100% { box-shadow: 0 0 0px #fff; } }
 
         .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 50; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
@@ -29,6 +27,7 @@
         .btn-gold { background: var(--gold); color: black; }
         .btn-gray { background: #333; color: #ccc; }
         .btn-blue { background: #3b82f6; color: white; box-shadow: 0 0 10px #3b82f6; }
+        .btn-red { background: #ff4757; color: white; box-shadow: 0 0 10px #ff4757; }
 
         .lobby-box { width: 90%; max-width: 600px; background: #151515; padding: 20px; border-radius: 15px; border: 1px solid #333; max-height: 90vh; overflow-y: auto; }
         .team-con { display: flex; gap: 10px; margin-top: 15px; min-height: 150px; }
@@ -52,28 +51,18 @@
         .base { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; text-align: center; font-size: 50px; }
         .team-name { position: absolute; top: 40%; transform: translate(-50%, -50%); color: #aaa; font-size: 20px; font-weight: bold; white-space: nowrap; z-index: 4; text-shadow: 1px 1px 0 #000; }
         
-        .unit { 
-            position: absolute; width: 30px; height: 30px; border-radius: 50%; 
-            transform: translate(-50%, -50%); z-index: 10; display: flex; 
-            justify-content: center; align-items: center; border: 2px solid white;
-            font-size: 16px; 
-            transition: left 0.15s linear, top 0.15s linear; 
-        }
+        .unit { position: absolute; width: 30px; height: 30px; border-radius: 50%; transform: translate(-50%, -50%); z-index: 10; display: flex; justify-content: center; align-items: center; border: 2px solid white; font-size: 16px; transition: left 0.15s linear, top 0.15s linear; }
         .unit.walk { animation: walkAnim 0.5s infinite linear; }
         .unit.attack { animation: atkAnim 0.2s linear; }
         .unit.stun { animation: stunnedAnim 1s infinite; }
         .unit.stun::after { content: '💫'; position: absolute; top: -15px; font-size: 14px; }
-        .unit.shielded { border: 2px solid #fff; animation: shieldPulse 0.5s infinite; } /* Mage Shield Effect */
+        .unit.shielded { border: 2px solid #fff; animation: shieldPulse 0.5s infinite; }
         .u-name { display: none; }
 
         .hp-bar { width: 80px; height: 6px; background: #333; margin: 0 auto; border-radius: 3px; overflow: hidden; }
         .hp-val { height: 100%; width: 100%; transition: width 0.2s; }
         
-        .proj { 
-            position: absolute; width: 12px; height: 12px; border-radius: 50%; background: white; z-index: 12; 
-            transform: translate(-50%,-50%); border: 2px solid black; 
-            transition: left 0.15s linear, top 0.15s linear;
-        }
+        .proj { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: white; z-index: 12; transform: translate(-50%,-50%); border: 2px solid black; transition: left 0.15s linear, top 0.15s linear; }
         .proj.mage { background: #a29bfe; box-shadow: 0 0 8px #a29bfe; }
         .proj.cannon { background: #333; width: 16px; height: 16px; }
         .proj.sniper_bullet { width: 6px; height: 6px; background: gold; box-shadow: 0 0 5px gold; border:none; }
@@ -81,18 +70,9 @@
         .aoe { position: absolute; border: 2px solid white; background: rgba(255,255,255,0.2); border-radius: 50%; z-index: 11; animation: expand 0.4s forwards; }
         .aoe.healer { border-color: #2ed573; background: rgba(46, 213, 115, 0.2); }
         .aoe.impact { border-color: #ffa502; background: rgba(255, 165, 2, 0.3); animation: expand 0.25s forwards; }
-        .aoe.mage_blast { border-color: #a29bfe; background: rgba(162, 155, 254, 0.5); animation: expand 0.5s forwards; } /* New Effect */
+        .aoe.mage_blast { border-color: #a29bfe; background: rgba(162, 155, 254, 0.5); animation: expand 0.5s forwards; }
 
-        .aim-scope {
-            position: absolute; width: 40px; height: 40px;
-            border: 2px solid #ff0000; border-radius: 50%;
-            z-index: 100; transform: translate(-50%, -50%);
-            box-shadow: 0 0 10px red;
-            background: rgba(255, 0, 0, 0.1);
-            pointer-events: none;
-            transition: left 0.15s linear, top 0.15s linear;
-            animation: spinScope 1s infinite linear;
-        }
+        .aim-scope { position: absolute; width: 40px; height: 40px; border: 2px solid #ff0000; border-radius: 50%; z-index: 100; transform: translate(-50%, -50%); box-shadow: 0 0 10px red; background: rgba(255, 0, 0, 0.1); pointer-events: none; transition: left 0.15s linear, top 0.15s linear; animation: spinScope 1s infinite linear; }
         .aim-scope::after, .aim-scope::before { content: ''; position: absolute; background: #ff0000; }
         .aim-scope::after { top: 50%; left: 0; width: 100%; height: 1px; }
         .aim-scope::before { top: 0; left: 50%; width: 1px; height: 100%; }
@@ -101,27 +81,8 @@
         .heal-text { position: absolute; color: #2ed573; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
         .block-text { position: absolute; color: #fff; font-weight: bold; font-size: 22px; z-index: 20; text-shadow: 0 0 5px #000; animation: floatUp 1s forwards; pointer-events: none; }
 
-        .hud-bottom { 
-            position: absolute; 
-            bottom: 220px; 
-            right: 10px; 
-            width: auto; 
-            text-align: right; 
-            z-index: 100; 
-            pointer-events: none; 
-        }
-        .energy { 
-            background: rgba(0,0,0,0.8); 
-            color: var(--gold); 
-            padding: 5px 20px; 
-            border-radius: 20px; 
-            border: 1px solid var(--gold); 
-            font-size: 24px; 
-            font-weight: bold; 
-            display: inline-block; 
-            min-width: 120px;
-            text-align: center;
-        }
+        .hud-bottom { position: absolute; bottom: 220px; right: 10px; width: auto; text-align: right; z-index: 100; pointer-events: none; }
+        .energy { background: rgba(0,0,0,0.8); color: var(--gold); padding: 5px 20px; border-radius: 20px; border: 1px solid var(--gold); font-size: 24px; font-weight: bold; display: inline-block; min-width: 120px; text-align: center; }
         
         .dock { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 100; width: 98%; max-width: 700px; justify-content: center; flex-wrap: wrap; }
         .card { width: 62px; height: 75px; background: #222; border: 1px solid #444; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.1s; overflow: hidden; flex-shrink: 0; }
@@ -150,6 +111,11 @@
 
         .loader { width: 50px; height: 50px; border: 5px solid #333; border-top: 5px solid var(--gold); border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* SANDBOX CONTROLS */
+        #sandboxControls { position: absolute; top: 10px; right: 10px; display: none; z-index: 101; text-align: right; }
+        #sideToggleBtn { padding: 10px; margin-bottom: 5px; font-weight: bold; width: 120px; }
+        #exitBtn { padding: 10px; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; width: 120px; }
     </style>
 </head>
 <body>
@@ -196,9 +162,7 @@
                 <h2 id="lTitle">Room</h2>
                 <button class="btn btn-gray" style="padding:5px 10px; font-size:12px;" onclick="location.reload()">ออก</button>
             </div>
-            
             <div id="autoTimer">เริ่มเกมอัตโนมัติใน: <span id="timerNum">30</span>s</div>
-
             <div id="cPal" style="margin:10px 0; text-align:center;"></div>
             <div class="team-con">
                 <div class="team-col">
@@ -230,6 +194,11 @@
             </div>
         </div>
         
+        <div id="sandboxControls">
+            <button id="sideToggleBtn" class="btn btn-blue" onclick="toggleSandboxSide()">Control: LEFT</button><br>
+            <button id="exitBtn" onclick="location.reload()">EXIT</button>
+        </div>
+
         <div id="chatCon">
             <div id="chatBox"></div>
             <div class="chat-input-row">
@@ -264,6 +233,10 @@
         let rid=null, mySide=null, eng=0, myLvl=0;
         let timerInterval = null;
         let lastCastTime = 0; 
+        
+        // [NEW] Sandbox Vars
+        let isSandbox = false;
+        let sandboxSide = 'left';
 
         const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️', sniper:'🔫' };
         
@@ -275,34 +248,20 @@
         // --- MENU & LOBBY ---
         function toggleBot(){ document.getElementById('botOpt').style.display = document.getElementById('gMode').value==='bot'?'block':'none'; }
         
-        // [EDITED] Send custom code
         function createRoom(){ 
             const code = document.getElementById('customCode').value;
-            socket.emit('create_room', { 
-                name: v('pName')||'Host', 
-                mode: v('gMode'), 
-                difficulty: v('bDiff'),
-                customId: code
-            }); 
+            socket.emit('create_room', { name: v('pName')||'Host', mode: v('gMode'), difficulty: v('bDiff'), customId: code }); 
         }
         
         function joinRoom(){ const c=v('rCode'); if(c) socket.emit('join_room', { roomId:c, name: v('pName')||'Joiner' }); else alert('ใส่รหัสห้อง'); }
         function v(id){ return document.getElementById(id).value; }
         
-        socket.on('join_success', d=>{ 
-            rid=d.roomId; 
-            toScr('lobbyScreen'); 
-            document.getElementById('autoTimer').style.display = d.isAuto ? 'block' : 'none';
-        });
+        socket.on('join_success', d=>{ rid=d.roomId; toScr('lobbyScreen'); document.getElementById('autoTimer').style.display = d.isAuto ? 'block' : 'none'; });
 
         socket.on('auto_match_timer', d=>{
-            let sec = d.seconds;
-            const el = document.getElementById('timerNum');
+            let sec = d.seconds; const el = document.getElementById('timerNum');
             if(timerInterval) clearInterval(timerInterval);
-            timerInterval = setInterval(()=>{
-                sec--; el.innerText = sec;
-                if(sec <= 0) clearInterval(timerInterval);
-            }, 1000);
+            timerInterval = setInterval(()=>{ sec--; el.innerText = sec; if(sec <= 0) clearInterval(timerInterval); }, 1000);
         });
 
         socket.on('room_created', d=>{ rid=d.roomId; toScr('lobbyScreen'); document.getElementById('autoTimer').style.display = 'none'; });
@@ -317,25 +276,19 @@
             if(me) mySide = me.side;
 
             d.colors.forEach(c => {
-                const dot = document.createElement('div');
-                dot.className = `color-dot ${me && me.color===c ? 'selected' : ''}`;
+                const dot = document.createElement('div'); dot.className = `color-dot ${me && me.color===c ? 'selected' : ''}`;
                 if(d.players.some(p=>p.color===c && p.id!==socket.id)) dot.classList.add('disabled');
-                dot.style.background = c;
-                dot.onclick = () => socket.emit('select_color', { roomId:rid, color:c });
-                pBox.appendChild(dot);
+                dot.style.background = c; dot.onclick = () => socket.emit('select_color', { roomId:rid, color:c }); pBox.appendChild(dot);
             });
 
             d.players.forEach(p=>{
-                const div = document.createElement('div');
-                div.className = 'p-card'; div.style.borderLeftColor = p.color;
+                const div = document.createElement('div'); div.className = 'p-card'; div.style.borderLeftColor = p.color;
                 div.innerHTML = `<span>${p.name}</span><span>${p.ready?'✅':'...'}</span>`;
                 if(p.side==='left') l.appendChild(div); else if(p.side==='right') r.appendChild(div);
             });
             
             if(me) {
-                const b=document.getElementById('rBtn');
-                b.innerText = me.ready?"ยกเลิก":"พร้อม";
-                b.className = me.ready?"btn btn-gold":"btn btn-gray";
+                const b=document.getElementById('rBtn'); b.innerText = me.ready?"ยกเลิก":"พร้อม"; b.className = me.ready?"btn btn-gold":"btn btn-gray";
             }
         });
 
@@ -343,40 +296,75 @@
         function tReady(){ socket.emit('toggle_ready', rid); }
         function toScr(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
 
-        function startMatchmaking() {
-            const name = v('pName') || 'Player';
-            socket.emit('find_match', { name });
-            toScr('matchScreen');
-        }
+        function startMatchmaking() { const name = v('pName') || 'Player'; socket.emit('find_match', { name }); toScr('matchScreen'); }
         function cancelMatch() { socket.emit('cancel_match'); toScr('menuScreen'); }
 
         // --- GAME LOGIC ---
         socket.on('start_game', (data)=>{ 
             if(timerInterval) clearInterval(timerInterval);
             toScr('gameScreen'); 
-            initCamera(); 
-
+            
             const me = data.players.find(p => p.id === socket.id);
-            if(me) mySide = me.side;
+            if(me) {
+                mySide = me.side;
+                // [NEW] Default Sandbox Side
+                if(data.mode === 'sandbox') sandboxSide = mySide;
+            }
 
             const leftNames = data.players.filter(p=>p.side==='left').map(p=>p.name).join(', ');
             const rightNames = data.players.filter(p=>p.side==='right').map(p=>p.name).join(', ');
             document.getElementById('nameL').innerText = leftNames;
             document.getElementById('nameR').innerText = rightNames;
+
+            // [NEW] Sandbox Check
+            isSandbox = (data.mode === 'sandbox');
+            if(isSandbox) {
+                document.getElementById('sandboxControls').style.display = 'block';
+                toggleSandboxSide(mySide); // Init button state
+            } else {
+                document.getElementById('sandboxControls').style.display = 'none';
+            }
+
+            initCamera(); 
         });
+
+        // [NEW] Sandbox Toggle Function
+        function toggleSandboxSide(forceVal) {
+            if(forceVal) sandboxSide = forceVal;
+            else sandboxSide = (sandboxSide === 'left' ? 'right' : 'left');
+
+            const btn = document.getElementById('sideToggleBtn');
+            btn.innerText = "Control: " + sandboxSide.toUpperCase();
+            if(sandboxSide === 'left') { btn.classList.remove('btn-red'); btn.classList.add('btn-blue'); }
+            else { btn.classList.remove('btn-blue'); btn.classList.add('btn-red'); }
+        }
 
         function spawn(t,c){ 
             const cardEl = document.getElementById('card-' + t);
             const limEl = document.getElementById('lim-' + t);
             const [cur, max] = limEl.innerText.split('/').map(Number);
+            
+            // Limit check still applies
             if(cur >= max) return; 
 
-            if(eng >= c && !cardEl.classList.contains('cooldown-active')) { 
-                eng -= c; 
-                document.getElementById('eng').innerText = Math.floor(eng);
+            // [EDITED] Logic for Sandbox (ignore cost check locally, visual only) vs Normal
+            let canSpawn = false;
+            if (isSandbox) {
+                canSpawn = true; // Always allow in Sandbox
+            } else {
+                if(eng >= c) canSpawn = true;
+            }
+
+            if(canSpawn && !cardEl.classList.contains('cooldown-active')) { 
+                if(!isSandbox) {
+                    eng -= c; 
+                    document.getElementById('eng').innerText = Math.floor(eng);
+                }
                 lastCastTime = Date.now(); 
 
-                socket.emit('spawn_request', { roomId:rid, type:t }); 
+                // [EDITED] Send side for sandbox
+                socket.emit('spawn_request', { roomId:rid, type:t, side: isSandbox ? sandboxSide : null }); 
+                
                 cardEl.classList.add('cooldown-active'); 
                 void cardEl.offsetWidth; 
                 cardEl.classList.add('cooldown-anim'); 
@@ -396,27 +384,16 @@
         function checkEnter(e) { if(e.key === 'Enter') sendMsg(); }
         function sendMsg() {
             const inp = document.getElementById('chatInp');
-            if(inp.value.trim()) {
-                socket.emit('send_chat', { roomId: rid, msg: inp.value.trim() });
-                inp.value = '';
-            }
+            if(inp.value.trim()) { socket.emit('send_chat', { roomId: rid, msg: inp.value.trim() }); inp.value = ''; }
         }
         
-        socket.on('chat_msg', d=>{
-            const b=document.getElementById('chatBox');
-            b.innerHTML += `<div style="color:${d.color}"><b>${d.name}:</b> ${d.msg}</div>`;
-            b.scrollTop=b.scrollHeight;
-        });
+        socket.on('chat_msg', d=>{ const b=document.getElementById('chatBox'); b.innerHTML += `<div style="color:${d.color}"><b>${d.name}:</b> ${d.msg}</div>`; b.scrollTop=b.scrollHeight; });
 
         socket.on('world_update', d=>{
             const now = Date.now();
             
             myLvl = d.myLvl;
-            if (now - lastCastTime < 600 && d.myEng > eng) {
-                eng += (0.15 + (myLvl*0.05)); 
-            } else {
-                eng = d.myEng; 
-            }
+            if (now - lastCastTime < 600 && d.myEng > eng) { eng += (0.15 + (myLvl*0.05)); } else { eng = d.myEng; }
             document.getElementById('eng').innerText = Math.floor(eng);
 
             const currentMax = MAX_ENERGY_LEVELS[myLvl] || MAX_ENERGY_LEVELS[MAX_ENERGY_LEVELS.length - 1];
@@ -426,10 +403,8 @@
             const upgCostEl = document.getElementById('upg-cost');
             const upgCard = document.getElementById('card-upgrade');
             
-            if (myLvl >= 5) {
-                upgCostEl.innerText = "MAX";
-                upgCard.classList.add('disabled');
-            } else {
+            if (myLvl >= 5) { upgCostEl.innerText = "MAX"; upgCard.classList.add('disabled'); } 
+            else {
                 const cost = UPGRADE_COSTS[myLvl];
                 upgCostEl.innerText = cost;
                 if (eng < cost) upgCard.classList.add('disabled'); else upgCard.classList.remove('disabled');
@@ -441,16 +416,11 @@
             const fxL = document.getElementById('fxLayer');
 
             d.u.forEach(data => {
-                const u = { 
-                    i: data[0], t: data[1], s: data[2], 
-                    x: data[3], y: data[4], h: data[5], 
-                    act: data[6], aimTarget: data[7], c: data[8],
-                    shield: data[9] // [NEW] รับค่าสถานะโล่/อมตะ
-                };
+                const u = { i: data[0], t: data[1], s: data[2], x: data[3], y: data[4], h: data[5], act: data[6], aimTarget: data[7], c: data[8], shield: data[9] };
 
-                if(u.s === mySide) {
-                    myCounts[u.t] = (myCounts[u.t] || 0) + 1;
-                }
+                // [EDITED] Count based on currently controlled side in Sandbox
+                const countSide = isSandbox ? sandboxSide : mySide;
+                if(u.s === countSide) { myCounts[u.t] = (myCounts[u.t] || 0) + 1; }
 
                 exist.add(u.i);
                 let el = document.getElementById(u.i);
@@ -463,14 +433,10 @@
                 }
                 
                 el.style.left = u.x+'px'; el.style.top = u.y+'px';
-                
                 el.classList.remove('walk', 'attack', 'stun', 'shielded');
-                
                 if(u.act === 'walk') el.classList.add('walk');
                 else if(u.act === 'attack') el.classList.add('attack');
                 else if(u.act === 'stun') el.classList.add('stun');
-                
-                // [NEW] แสดงผลโล่ Mage
                 if(u.shield) el.classList.add('shielded');
 
                 if(u.aimTarget) {
@@ -479,21 +445,11 @@
                     let scopeEl = document.getElementById(scopeId);
                     
                     if(targetEl || u.aimTarget.startsWith('base')) {
-                        if(!scopeEl) {
-                            scopeEl = document.createElement('div'); scopeEl.id = scopeId; scopeEl.className = 'aim-scope'; fxL.appendChild(scopeEl);
-                        }
-                        if (targetEl) {
-                            scopeEl.style.left = targetEl.style.left; scopeEl.style.top = targetEl.style.top;
-                        } else {
-                            const isLeftBase = u.aimTarget.includes('left');
-                            scopeEl.style.left = isLeftBase ? '100px' : '1500px';
-                            scopeEl.style.top = '450px';
-                        }
+                        if(!scopeEl) { scopeEl = document.createElement('div'); scopeEl.id = scopeId; scopeEl.className = 'aim-scope'; fxL.appendChild(scopeEl); }
+                        if (targetEl) { scopeEl.style.left = targetEl.style.left; scopeEl.style.top = targetEl.style.top; } 
+                        else { const isLeftBase = u.aimTarget.includes('left'); scopeEl.style.left = isLeftBase ? '100px' : '1500px'; scopeEl.style.top = '450px'; }
                     } else if (scopeEl) { scopeEl.remove(); }
-                } else {
-                    let scopeEl = document.getElementById('scope_' + u.i);
-                    if(scopeEl) scopeEl.remove();
-                }
+                } else { let scopeEl = document.getElementById('scope_' + u.i); if(scopeEl) scopeEl.remove(); }
             });
 
             document.querySelectorAll('.card:not(.upgrade)').forEach(c=>{
@@ -504,7 +460,13 @@
                     const maxCount = LIMITS[type]; 
                     const limText = document.getElementById('lim-' + type);
                     if(limText) limText.innerText = `${curCount}/${maxCount}`;
-                    if(eng < cost || curCount >= maxCount) c.classList.add('disabled'); else c.classList.remove('disabled');
+                    
+                    // [EDITED] Sandbox Logic for Card State (Ignore Energy)
+                    let disabled = false;
+                    if(curCount >= maxCount) disabled = true;
+                    if(!isSandbox && eng < cost) disabled = true;
+
+                    if(disabled) c.classList.add('disabled'); else c.classList.remove('disabled');
                 }
             });
 
@@ -512,50 +474,21 @@
             document.getElementById('hpR').style.width = (d.b.right/10)+'%';
 
             Array.from(uL.children).forEach(e=>{ if(!exist.has(e.id)) e.remove(); });
-            document.querySelectorAll('.aim-scope').forEach(scope => {
-                const sniperId = scope.id.replace('scope_', '');
-                if (!exist.has(sniperId)) scope.remove();
-            });
-
+            document.querySelectorAll('.aim-scope').forEach(scope => { const sniperId = scope.id.replace('scope_', ''); if (!exist.has(sniperId)) scope.remove(); });
             document.querySelectorAll('.proj').forEach(e=>e.remove());
-            d.proj.forEach(pData=>{
-                const el = document.createElement('div'); el.className=`proj ${pData[2]}`;
-                el.style.left=pData[0]+'px'; el.style.top=pData[1]+'px';
-                fxL.appendChild(el);
-            });
+            d.proj.forEach(pData=>{ const el = document.createElement('div'); el.className=`proj ${pData[2]}`; el.style.left=pData[0]+'px'; el.style.top=pData[1]+'px'; fxL.appendChild(el); });
 
             d.fx.forEach(f=>{
-                if(f.type==='dmg'){
-                    const e=document.createElement('div'); e.className='dmg'; e.innerText=`-${f.val}`;
-                    e.style.left=f.x+'px'; e.style.top=(f.y-20)+'px';
-                    fxL.appendChild(e); setTimeout(()=>e.remove(),800);
-                } 
-                else if(f.type==='heal'){
-                    const e=document.createElement('div'); e.className='heal-text'; e.innerText=`+${f.val}`;
-                    e.style.left=f.x+'px'; e.style.top=(f.y-30)+'px';
-                    fxL.appendChild(e); setTimeout(()=>e.remove(),800);
-                }
-                else if(f.type==='text'){
-                    // [NEW] Text Effect (BLOCK)
-                    const e=document.createElement('div'); e.className='block-text'; e.innerText=f.val;
-                    e.style.color=f.color;
-                    e.style.left=f.x+'px'; e.style.top=(f.y-30)+'px';
-                    fxL.appendChild(e); setTimeout(()=>e.remove(),1000);
-                }
+                if(f.type==='dmg'){ const e=document.createElement('div'); e.className='dmg'; e.innerText=`-${f.val}`; e.style.left=f.x+'px'; e.style.top=(f.y-20)+'px'; fxL.appendChild(e); setTimeout(()=>e.remove(),800); } 
+                else if(f.type==='heal'){ const e=document.createElement('div'); e.className='heal-text'; e.innerText=`+${f.val}`; e.style.left=f.x+'px'; e.style.top=(f.y-30)+'px'; fxL.appendChild(e); setTimeout(()=>e.remove(),800); }
+                else if(f.type==='text'){ const e=document.createElement('div'); e.className='block-text'; e.innerText=f.val; e.style.color=f.color; e.style.left=f.x+'px'; e.style.top=(f.y-30)+'px'; fxL.appendChild(e); setTimeout(()=>e.remove(),1000); }
                 else if(f.type==='aoe'){
                     const e=document.createElement('div'); e.className='aoe'; 
-                    if(f.t === 'healer') e.classList.add('healer');
-                    if(f.t === 'impact') e.classList.add('impact'); 
-                    if(f.t === 'mage_blast') e.classList.add('mage_blast'); // [NEW]
-                    e.style.left=f.x+'px'; e.style.top=f.y+'px';
-                    e.style.width=(f.r*2)+'px'; e.style.height=(f.r*2)+'px';
+                    if(f.t === 'healer') e.classList.add('healer'); if(f.t === 'impact') e.classList.add('impact'); if(f.t === 'mage_blast') e.classList.add('mage_blast');
+                    e.style.left=f.x+'px'; e.style.top=f.y+'px'; e.style.width=(f.r*2)+'px'; e.style.height=(f.r*2)+'px';
                     if(f.t === 'assassin') e.style.borderColor = '#ff4757'; 
                     fxL.appendChild(e); setTimeout(()=>e.remove(),400);
-                } else if(f.type==='warp'){
-                    const e=document.createElement('div'); e.innerText='💨'; e.style.position='absolute';
-                    e.style.left=f.x+'px'; e.style.top=f.y+'px'; e.style.fontSize='25px';
-                    fxL.appendChild(e); setTimeout(()=>e.remove(),500);
-                }
+                } else if(f.type==='warp'){ const e=document.createElement('div'); e.innerText='💨'; e.style.position='absolute'; e.style.left=f.x+'px'; e.style.top=f.y+'px'; e.style.fontSize='25px'; fxL.appendChild(e); setTimeout(()=>e.remove(),500); }
             });
         });
 
@@ -568,8 +501,7 @@
             let state = { x: mySide === 'right' ? -(1600 - vp.clientWidth) : 0, y: -(900 - vp.clientHeight) / 2, scale: 1 };
             const MIN_SCALE = 0.5, MAX_SCALE = 1.5, WORLD_W = 1600, WORLD_H = 900;
             function updateTransform() {
-                const minX = vp.clientWidth - (WORLD_W * state.scale);
-                const minY = vp.clientHeight - (WORLD_H * state.scale);
+                const minX = vp.clientWidth - (WORLD_W * state.scale); const minY = vp.clientHeight - (WORLD_H * state.scale);
                 if (minX > 0) state.x = minX / 2; else state.x = Math.max(minX, Math.min(0, state.x));
                 if (minY > 0) state.y = minY / 2; else state.y = Math.max(minY, Math.min(0, state.y));
                 world.style.transform = `translate3d(${state.x}px, ${state.y}px, 0) scale(${state.scale})`;

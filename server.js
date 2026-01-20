@@ -12,15 +12,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- GAME CONFIG ---
 const WORLD_W = 1600;
 const WORLD_H = 900;
-
-// [EDITED] กำหนด Max Energy ตามเลเวล (0 ถึง 5)
 const MAX_ENERGY_LEVELS = [300, 450, 600, 800, 1000, 1500];
-
-// Upgrade Config
 const UPGRADE_COSTS = [50, 100, 150, 250, 400];
 const REGEN_RATES = [0.15, 0.22, 0.30, 0.40, 0.55, 0.75];
 
-// *** LIMITS & SPECS CONFIG ***
 const SPECS = {
     sword:    { hp: 25,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 1200, limit: 20, type: 'melee' },
     bow:      { hp: 20,  dmg: 5,  range: 300, speed: 2.5, size: 30, cost: 45, atkRate: 1500, limit: 15, type: 'ranged' },
@@ -47,7 +42,6 @@ const COLORS = [
 let rooms = {};
 let matchQueue = [];
 
-// Game Loop
 setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
@@ -67,28 +61,15 @@ setInterval(() => {
             if (typeof room.serverTick === 'undefined') room.serverTick = 0;
             room.serverTick++;
 
-            // OPTIMIZATION: ส่งข้อมูลทุกๆ 4 Tick (200ms)
             if (room.serverTick % 4 === 0) {
                 const packet = {
                     b: room.bases,
                     u: room.units.map(u => [
-                        u.id, 
-                        u.type, 
-                        u.side,
-                        Math.round(u.x), 
-                        Math.round(u.y), 
-                        u.hp,
-                        u.isStunned ? 'stun' : u.action, 
-                        u.aimTargetId || null, 
-                        u.color,
-                        // [NEW] ส่งสถานะโล่ Mage หรืออมตะไปให้ Client (ใช้ effect แทน หรือดูที่สี)
+                        u.id, u.type, u.side, Math.round(u.x), Math.round(u.y), u.hp,
+                        u.isStunned ? 'stun' : u.action, u.aimTargetId || null, u.color,
                         (u.type === 'mage' && (u.mageShield || u.invincibleTime > Date.now())) ? 1 : 0 
                     ]),
-                    proj: room.projectiles.map(p => [
-                        Math.round(p.x), 
-                        Math.round(p.y), 
-                        p.type
-                    ]),
+                    proj: room.projectiles.map(p => [ Math.round(p.x), Math.round(p.y), p.type ]),
                     fx: room.effects 
                 };
                 
@@ -98,55 +79,37 @@ setInterval(() => {
                     packet.myLvl = player.energyLevel; 
                     io.to(player.id).emit('world_update', packet);
                 });
-
                 room.effects = [];
             }
         }
     }
 }, 50);
 
-// [NEW] ฟังก์ชันจัดการ Damage กลาง (รองรับ Mage Shield)
 function applyDamage(room, unit, dmg, sourceX, sourceY) {
     if (unit.dead) return;
     const now = Date.now();
 
-    // --- MAGE DEFENSE MECHANIC ---
     if (unit.type === 'mage') {
-        // ถ้าอยู่ในช่วงอมตะ
-        if (unit.invincibleTime && now < unit.invincibleTime) {
-            return; // ไม่โดนดาเมจ
-        }
-
-        // ถ้ามีโล่ (โดนครั้งแรก)
+        if (unit.invincibleTime && now < unit.invincibleTime) return; 
         if (unit.mageShield) {
             unit.mageShield = false;
-            unit.invincibleTime = now + 5000; // อมตะ 5 วินาที
-            
-            // Visual Effect: Block text
+            unit.invincibleTime = now + 5000; 
             room.effects.push({ type: 'text', x: unit.x, y: unit.y, val: 'BLOCK', color: '#fff' });
-            
-            // Visual Effect: Explosion Ring
             room.effects.push({ type: 'aoe', x: unit.x, y: unit.y, r: 75, t: 'mage_blast' });
-
-            // Logic: Stun ศัตรูรอบๆ 75 หน่วย เป็นเวลา 1 วินาที
             room.units.forEach(e => {
                 if (e.side !== unit.side && !e.dead) {
                     const dist = Math.hypot(unit.x - e.x, unit.y - e.y);
                     if (dist <= 75) {
                         e.stunEndTime = now + 1000;
                         e.action = 'stun';
-                        // ผลักออกนิดหน่อย
                         const angle = Math.atan2(e.y - unit.y, e.x - unit.x);
-                        e.x += Math.cos(angle) * 20;
-                        e.y += Math.sin(angle) * 20;
+                        e.x += Math.cos(angle) * 20; e.y += Math.sin(angle) * 20;
                     }
                 }
             });
-            return; // จบการทำงาน (ไม่โดนดาเมจครั้งนี้)
+            return; 
         }
     }
-
-    // Normal Damage
     unit.hp -= dmg;
     room.effects.push({ type: 'dmg', x: unit.x, y: unit.y, val: dmg });
     if (unit.hp <= 0) unit.dead = true;
@@ -155,13 +118,11 @@ function applyDamage(room, unit, dmg, sourceX, sourceY) {
 function updateGame(room) {
     const now = Date.now();
     
-    // Regen Energy System
     room.players.forEach(p => {
         const currentMaxEnergy = MAX_ENERGY_LEVELS[p.energyLevel] || MAX_ENERGY_LEVELS[MAX_ENERGY_LEVELS.length - 1];
         if (p.energy < currentMaxEnergy) {
             let rIndex = p.energyLevel;
             if(p.isBot) rIndex = BOT_SETTINGS[room.difficulty].regenIdx;
-            
             const rate = REGEN_RATES[Math.min(rIndex, REGEN_RATES.length - 1)];
             p.energy += rate;
             if (p.energy > currentMaxEnergy) p.energy = currentMaxEnergy;
@@ -169,24 +130,13 @@ function updateGame(room) {
         if (p.isBot) runBotLogic(room, p);
     });
 
-    // Clean Dead Units
     for (let i = room.units.length - 1; i >= 0; i--) {
         if (room.units[i].dead) room.units.splice(i, 1);
     }
 
-    // Unit Logic
     room.units.forEach(u => {
-        
-        // --- STUN LOGIC ---
-        if (u.stunEndTime && now < u.stunEndTime) {
-            u.isStunned = true;
-            u.action = 'stun';
-            return; 
-        } else {
-            u.isStunned = false;
-        }
+        if (u.stunEndTime && now < u.stunEndTime) { u.isStunned = true; u.action = 'stun'; return; } else { u.isStunned = false; }
 
-        // --- TANK CHARGE LOGIC ---
         if (u.type === 'tank' && u.charging) {
             u.action = 'walk';
             const enemyHit = room.units.find(e => e.side !== u.side && !e.dead && Math.hypot(u.x - e.x, u.y - e.y) < (u.size + e.size));
@@ -196,16 +146,13 @@ function updateGame(room) {
             if (enemyHit || distToBase <= SPECS.tank.range) {
                 u.charging = false; 
                 room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.tank.impactRadius, t: 'impact' });
-                
                 room.units.forEach(e => {
                     if (e.side !== u.side && !e.dead) {
                         const dist = Math.hypot(u.x - e.x, u.y - e.y);
                         if (dist <= SPECS.tank.impactRadius) {
-                            e.stunEndTime = now + SPECS.tank.stunDur;
-                            e.action = 'stun';
+                            e.stunEndTime = now + SPECS.tank.stunDur; e.action = 'stun';
                             const angle = Math.atan2(e.y - u.y, e.x - u.x);
-                            e.x += Math.cos(angle) * SPECS.tank.knockback;
-                            e.y += Math.sin(angle) * SPECS.tank.knockback;
+                            e.x += Math.cos(angle) * SPECS.tank.knockback; e.y += Math.sin(angle) * SPECS.tank.knockback;
                             if(e.y < 50) e.y = 50; if(e.y > WORLD_H-50) e.y = WORLD_H-50;
                         }
                     }
@@ -214,13 +161,11 @@ function updateGame(room) {
                 const dir = u.side === 'left' ? 1 : -1;
                 u.x += dir * SPECS.tank.chargeSpeed;
                 const mid = WORLD_H / 2;
-                if (u.y < mid - 50) u.y += 0.5;
-                if (u.y > mid + 50) u.y -= 0.5;
+                if (u.y < mid - 50) u.y += 0.5; if (u.y > mid + 50) u.y -= 0.5;
                 return; 
             }
         }
 
-        // --- SNIPER LOGIC ---
         if (u.type === 'sniper') {
             const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
             const distToBase = Math.abs(u.x - enemyBaseX);
@@ -228,21 +173,14 @@ function updateGame(room) {
             if (u.aiming) {
                 u.action = 'idle';
                 let targetExists = false;
-                if (u.aimTargetType === 'base') {
-                     if (room.bases[u.side === 'left' ? 'right' : 'left'] > 0) targetExists = true;
-                } else {
-                    const foundTarget = room.units.find(e => e.id === u.aimTargetId && !e.dead);
-                    if (foundTarget) targetExists = true;
-                }
+                if (u.aimTargetType === 'base') { if (room.bases[u.side === 'left' ? 'right' : 'left'] > 0) targetExists = true; } 
+                else { const foundTarget = room.units.find(e => e.id === u.aimTargetId && !e.dead); if (foundTarget) targetExists = true; }
+                
                 if (!targetExists) { u.aiming = false; u.aimTargetId = null; return; }
                 if (now - u.aimStartTime >= SPECS.sniper.aimTime) {
                     u.lastAttack = now; u.aiming = false;
-                    if (u.aimTargetType === 'base') {
-                        spawnProjectile(room, u, { id: null, x: enemyBaseX, y: WORLD_H/2, dead: false });
-                    } else {
-                        const targetUnit = room.units.find(e => e.id === u.aimTargetId);
-                        if (targetUnit) { spawnProjectile(room, u, targetUnit); }
-                    }
+                    if (u.aimTargetType === 'base') { spawnProjectile(room, u, { id: null, x: enemyBaseX, y: WORLD_H/2, dead: false }); } 
+                    else { const targetUnit = room.units.find(e => e.id === u.aimTargetId); if (targetUnit) { spawnProjectile(room, u, targetUnit); } }
                     u.aimTargetId = null;
                 }
                 return;
@@ -255,29 +193,19 @@ function updateGame(room) {
                     if (dist < minDist && dist <= SPECS.sniper.range) { minDist = dist; potentialTarget = o; }
                 }
             });
-            if (potentialTarget) {
-                u.aiming = true; u.aimStartTime = now; u.aimTargetId = potentialTarget.id; u.aimTargetType = 'unit'; u.action = 'idle';
-            } else if (distToBase <= SPECS.sniper.range) {
-                u.aiming = true; u.aimStartTime = now; u.aimTargetId = 'base_' + (u.side === 'left' ? 'right' : 'left'); u.aimTargetType = 'base'; u.action = 'idle';
-            } else {
-                u.x += (u.side === 'left' ? 1 : -1) * u.speed;
-                u.action = 'walk';
-                const mid = WORLD_H / 2;
-                if (u.y < mid - 100) u.y += 0.5;
-                if (u.y > mid + 100) u.y -= 0.5;
+            if (potentialTarget) { u.aiming = true; u.aimStartTime = now; u.aimTargetId = potentialTarget.id; u.aimTargetType = 'unit'; u.action = 'idle'; } 
+            else if (distToBase <= SPECS.sniper.range) { u.aiming = true; u.aimStartTime = now; u.aimTargetId = 'base_' + (u.side === 'left' ? 'right' : 'left'); u.aimTargetType = 'base'; u.action = 'idle'; } 
+            else {
+                u.x += (u.side === 'left' ? 1 : -1) * u.speed; u.action = 'walk';
+                const mid = WORLD_H / 2; if (u.y < mid - 100) u.y += 0.5; if (u.y > mid + 100) u.y -= 0.5;
             }
             return;
         }
 
         u.action = 'idle';
 
-        // --- HEALER LOGIC ---
         if (u.type === 'healer') {
-            const friendsToHeal = room.units.filter(friend => 
-                friend.side === u.side && !friend.dead && friend.id !== u.id &&
-                Math.hypot(u.x - friend.x, u.y - friend.y) <= SPECS.healer.radius &&
-                friend.hp < SPECS[friend.type].hp
-            );
+            const friendsToHeal = room.units.filter(friend => friend.side === u.side && !friend.dead && friend.id !== u.id && Math.hypot(u.x - friend.x, u.y - friend.y) <= SPECS.healer.radius && friend.hp < SPECS[friend.type].hp);
             const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
             const distToBase = Math.abs(u.x - enemyBaseX);
 
@@ -286,71 +214,44 @@ function updateGame(room) {
                 if (friendsToHeal.length > 0 && now - u.lastAttack > SPECS.healer.atkRate) {
                     u.lastAttack = now;
                     friendsToHeal.forEach(f => {
-                        f.hp += 5;
-                        if (f.hp > SPECS[f.type].hp) f.hp = SPECS[f.type].hp;
+                        f.hp += 5; if (f.hp > SPECS[f.type].hp) f.hp = SPECS[f.type].hp;
                         room.effects.push({ type: 'heal', x: f.x, y: f.y, val: 5 });
                     });
                     room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.healer.radius, t: 'healer' });
                 }
             } else {
-                u.x += (u.side === 'left' ? 1 : -1) * u.speed;
-                u.action = 'walk';
+                u.x += (u.side === 'left' ? 1 : -1) * u.speed; u.action = 'walk';
             }
-            if (u.y < (WORLD_H/2) - 100) u.y += 0.5;
-            if (u.y > (WORLD_H/2) + 100) u.y -= 0.5;
+            if (u.y < (WORLD_H/2) - 100) u.y += 0.5; if (u.y > (WORLD_H/2) + 100) u.y -= 0.5;
             return;
         }
 
-        // --- ASSASSIN LOGIC ---
         if (u.type === 'assassin') {
             const enemiesInJumpRange = room.units.filter(e => e.side !== u.side && !e.dead && Math.hypot(u.x - e.x, u.y - e.y) <= SPECS.assassin.jumpRange);
             let jumpTarget = null;
             if (!u.jumpReadyTime || now > u.jumpReadyTime) {
                 if (enemiesInJumpRange.length > 0) {
                     const rangedTargets = enemiesInJumpRange.filter(e => ['bow', 'mage', 'cannon', 'sniper', 'healer'].includes(e.type));
-                    if (rangedTargets.length > 0) {
-                        rangedTargets.sort((a, b) => Math.hypot(u.x - b.x, u.y - b.y) - Math.hypot(u.x - a.x, u.y - a.y));
-                        jumpTarget = rangedTargets[0];
-                    } else {
-                        enemiesInJumpRange.sort((a, b) => Math.hypot(u.x - a.x, u.y - a.y) - Math.hypot(u.x - b.x, u.y - b.y));
-                        jumpTarget = enemiesInJumpRange[0];
-                    }
+                    if (rangedTargets.length > 0) { rangedTargets.sort((a, b) => Math.hypot(u.x - b.x, u.y - b.y) - Math.hypot(u.x - a.x, u.y - a.y)); jumpTarget = rangedTargets[0]; } 
+                    else { enemiesInJumpRange.sort((a, b) => Math.hypot(u.x - a.x, u.y - a.y) - Math.hypot(u.x - b.x, u.y - b.y)); jumpTarget = enemiesInJumpRange[0]; }
                 }
                 if (jumpTarget) {
                     const dist = Math.hypot(u.x - jumpTarget.x, u.y - jumpTarget.y);
                     if (dist > 50) { 
                         const offset = u.side === 'left' ? 40 : -40;
-                        u.x = jumpTarget.x + offset; 
-                        u.y = jumpTarget.y;
+                        u.x = jumpTarget.x + offset; u.y = jumpTarget.y;
                         u.jumpReadyTime = now + SPECS.assassin.jumpCd;
-                        
                         room.effects.push({ type: 'warp', x: u.x, y: u.y });
                         room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.assassin.radius, t: 'assassin' });
-                        
-                        room.units.forEach(e => {
-                            if (e.side !== u.side && !e.dead && Math.hypot(u.x - e.x, u.y - e.y) <= SPECS.assassin.radius) {
-                                // ใช้ applyDamage
-                                applyDamage(room, e, 15, u.x, u.y);
-                            }
-                        });
-
-                        u.lastAttack = now; 
-                        return; 
+                        room.units.forEach(e => { if (e.side !== u.side && !e.dead && Math.hypot(u.x - e.x, u.y - e.y) <= SPECS.assassin.radius) { applyDamage(room, e, 15, u.x, u.y); } });
+                        u.lastAttack = now; return; 
                     }
                 }
             }
         }
 
-        // --- NORMAL UNITS LOGIC (Walk & Attack) ---
-        let target = null;
-        let minDist = 999;
-
-        room.units.forEach(o => {
-            if (o.side !== u.side && !o.dead) {
-                const dist = Math.hypot(u.x - o.x, u.y - o.y);
-                if (dist < minDist) { minDist = dist; target = o; }
-            }
-        });
+        let target = null; let minDist = 999;
+        room.units.forEach(o => { if (o.side !== u.side && !o.dead) { const dist = Math.hypot(u.x - o.x, u.y - o.y); if (dist < minDist) { minDist = dist; target = o; } } });
 
         const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
         const distToBase = Math.abs(u.x - enemyBaseX);
@@ -362,31 +263,32 @@ function updateGame(room) {
                 const targetSide = u.side === 'left' ? 'right' : 'left';
                 room.bases[targetSide] -= u.dmg;
                 room.effects.push({ type: 'dmg', x: enemyBaseX, y: WORLD_H/2, val: u.dmg });
-                if (room.bases[targetSide] <= 0) endGame(room, u.side);
+                
+                // [EDITED] Sandbox Logic: ถ้าเลือดหมดให้รีเซ็ต ไม่จบเกม
+                if (room.bases[targetSide] <= 0) {
+                    if (room.mode === 'sandbox') {
+                        room.bases[targetSide] = 1000;
+                        room.effects.push({ type: 'text', x: enemyBaseX, y: WORLD_H/2, val: 'RESET', color: '#fff' });
+                    } else {
+                        endGame(room, u.side);
+                    }
+                }
             }
         } else if (target && minDist <= SPECS[u.type].range) {
             if (now - u.lastAttack > SPECS[u.type].atkRate) {
                 u.lastAttack = now; u.action = 'attack';
                 if (['mage', 'cannon', 'bow', 'sniper'].includes(u.type)) { spawnProjectile(room, u, target); } 
-                else {
-                    // ใช้ applyDamage สำหรับ Melee
-                    applyDamage(room, target, u.dmg, u.x, u.y);
-                }
+                else { applyDamage(room, target, u.dmg, u.x, u.y); }
             }
         } else {
             u.action = 'walk';
             if (target) {
-                const dx = target.x - u.x;
-                const dy = target.y - u.y;
-                const angle = Math.atan2(dy, dx);
-                u.x += Math.cos(angle) * u.speed;
-                u.y += Math.sin(angle) * u.speed;
+                const dx = target.x - u.x; const dy = target.y - u.y; const angle = Math.atan2(dy, dx);
+                u.x += Math.cos(angle) * u.speed; u.y += Math.sin(angle) * u.speed;
             } else {
                 const dir = u.side === 'left' ? 1 : -1;
                 u.x += dir * u.speed;
-                const mid = WORLD_H / 2;
-                if (u.y < mid - 100) u.y += 0.5;
-                if (u.y > mid + 100) u.y -= 0.5;
+                const mid = WORLD_H / 2; if (u.y < mid - 100) u.y += 0.5; if (u.y > mid + 100) u.y -= 0.5;
             }
         }
     });
@@ -398,83 +300,62 @@ function spawnProjectile(room, owner, target) {
     let speed = 10;
     if (owner.type === 'cannon') speed = 14;
     if (owner.type === 'sniper') speed = 25; 
-
     room.projectiles.push({
-        x: owner.x, y: owner.y, 
-        targetId: target.id, 
-        tx: target.x, ty: target.y, 
-        speed: speed, 
-        dmg: SPECS[owner.type].dmg, 
-        radius: SPECS[owner.type].radius || 10, 
-        type: owner.type, 
-        side: owner.side
+        x: owner.x, y: owner.y, targetId: target.id, tx: target.x, ty: target.y, 
+        speed: speed, dmg: SPECS[owner.type].dmg, radius: SPECS[owner.type].radius || 10, 
+        type: owner.type, side: owner.side
     });
 }
 
 function updateProjectiles(room) {
     for (let i = room.projectiles.length - 1; i >= 0; i--) {
         const p = room.projectiles[i];
+        if (p.targetId) { const target = room.units.find(u => u.id === p.targetId); if (target && !target.dead) { p.tx = target.x; p.ty = target.y; } }
 
-        if (p.targetId) {
-            const target = room.units.find(u => u.id === p.targetId);
-            if (target && !target.dead) { p.tx = target.x; p.ty = target.y; }
-        }
-
-        const dx = p.tx - p.x, dy = p.ty - p.y;
-        const dist = Math.hypot(dx, dy);
+        const dx = p.tx - p.x, dy = p.ty - p.y; const dist = Math.hypot(dx, dy);
 
         if (dist < p.speed) {
             let hit = false;
             
-            // [EDITED] Sniper Logic: Single Target only
             if (p.type === 'sniper') {
-                // หากระสุน Sniper ที่ชนยูนิต (หาตัวที่ใกล้ที่สุดในระยะ hit range)
                 let targets = [];
                 room.units.forEach(u => {
-                    if (u.side !== p.side && !u.dead) {
-                        const d = Math.hypot(u.x - p.tx, u.y - p.ty);
-                        if (d <= 30) { targets.push({ unit: u, dist: d }); }
-                    }
+                    if (u.side !== p.side && !u.dead) { const d = Math.hypot(u.x - p.tx, u.y - p.ty); if (d <= 30) { targets.push({ unit: u, dist: d }); } }
                 });
-
                 if (targets.length > 0) {
-                    // เรียงตามระยะ หาตัวใกล้สุด
                     targets.sort((a, b) => a.dist - b.dist);
-                    applyDamage(room, targets[0].unit, p.dmg, p.tx, p.ty);
-                    hit = true;
+                    applyDamage(room, targets[0].unit, p.dmg, p.tx, p.ty); hit = true;
                 }
-
             } else {
-                // กระสุนปกติ (อาจเป็น AoE หรือ Single)
                 room.units.forEach(u => {
                     if (u.side !== p.side && !u.dead) {
                         const d = Math.hypot(u.x - p.tx, u.y - p.ty);
-                        if (d <= p.radius) {
-                            applyDamage(room, u, p.dmg, p.tx, p.ty);
-                            hit = true;
-                        }
+                        if (d <= p.radius) { applyDamage(room, u, p.dmg, p.tx, p.ty); hit = true; }
                     }
                 });
             }
 
-            // Sniper ยิงฐาน
             if (p.type === 'sniper' && !p.targetId && !hit) {
                  const enemyBaseX = p.side === 'left' ? WORLD_W - 100 : 100;
                  if (Math.abs(p.tx - enemyBaseX) < 50) {
                      const targetSide = p.side === 'left' ? 'right' : 'left';
                      room.bases[targetSide] -= p.dmg;
                      room.effects.push({ type: 'dmg', x: p.tx, y: p.ty, val: p.dmg });
-                     if (room.bases[targetSide] <= 0) endGame(room, p.side);
+                     
+                     // [EDITED] Sandbox Logic for Projectile
+                     if (room.bases[targetSide] <= 0) {
+                        if (room.mode === 'sandbox') {
+                            room.bases[targetSide] = 1000;
+                            room.effects.push({ type: 'text', x: enemyBaseX, y: WORLD_H/2, val: 'RESET', color: '#fff' });
+                        } else {
+                            endGame(room, p.side);
+                        }
+                     }
                  }
             }
 
-            if (p.type === 'mage' || p.type === 'cannon') { 
-                room.effects.push({ type: 'aoe', x: p.tx, y: p.ty, r: p.radius, t: p.type }); 
-            }
-            
-            // ลบกระสุนทันทีเมื่อถึงเป้าหมาย
+            if (p.type === 'mage' || p.type === 'cannon') { room.effects.push({ type: 'aoe', x: p.tx, y: p.ty, r: p.radius, t: p.type }); }
             room.projectiles.splice(i, 1);
-
         } else {
             const angle = Math.atan2(dy, dx);
             p.x += Math.cos(angle) * p.speed; p.y += Math.sin(angle) * p.speed;
@@ -483,48 +364,47 @@ function updateProjectiles(room) {
 }
 
 function runBotLogic(room, bot) {
-    if (bot.energy > 400 && bot.energyLevel < 4) {
-        bot.energy -= UPGRADE_COSTS[bot.energyLevel];
-        bot.energyLevel++;
-    }
-
+    if (bot.energy > 400 && bot.energyLevel < 4) { bot.energy -= UPGRADE_COSTS[bot.energyLevel]; bot.energyLevel++; }
     if (Math.random() < BOT_SETTINGS[room.difficulty].aggro) {
-        const types = Object.keys(SPECS);
-        const affordable = types.filter(t => bot.energy >= SPECS[t].cost);
+        const types = Object.keys(SPECS); const affordable = types.filter(t => bot.energy >= SPECS[t].cost);
         if (affordable.length > 0) { spawnUnit(room, bot, affordable[Math.floor(Math.random() * affordable.length)]); }
     }
 }
 
-function spawnUnit(room, player, type) {
+// [EDITED] เพิ่ม parameter forceSide สำหรับ Sandbox
+function spawnUnit(room, player, type, forceSide = null) {
     if (!SPECS[type]) return; 
-    if (player.energy < SPECS[type].cost) return;
+    
+    // [EDITED] Sandbox: ไม่เช็ค Energy แต่ยังเช็ค Limit
+    if (room.mode !== 'sandbox' && player.energy < SPECS[type].cost) return;
 
-    const currentCount = room.units.filter(u => u.side === player.side && u.type === type && !u.dead).length;
-    if (SPECS[type].limit && currentCount >= SPECS[type].limit) {
-        return; 
-    }
+    // Determine Spawn Side
+    const spawnSide = forceSide || player.side;
+
+    const currentCount = room.units.filter(u => u.side === spawnSide && u.type === type && !u.dead).length;
+    if (SPECS[type].limit && currentCount >= SPECS[type].limit) return; 
 
     const now = Date.now();
     if (!player.cooldowns) player.cooldowns = {};
     if (player.cooldowns[type] && now < player.cooldowns[type]) return;
 
-    player.energy -= SPECS[type].cost;
+    // [EDITED] Sandbox: ไม่ลด Energy
+    if (room.mode !== 'sandbox') {
+        player.energy -= SPECS[type].cost;
+    }
+    
     player.cooldowns[type] = now + 3000;
-
     const batchId = Date.now() + Math.random();
     const count = type === 'cannon' ? 3 : 5; 
     
     for (let i = 0; i < count; i++) {
         let u = {
-            id: `${batchId}_${i}`, type, side: player.side, color: player.color, owner: player.name,
-            x: player.side === 'left' ? 120 : WORLD_W - 120, y: (WORLD_H / 2) + (Math.random() * 200 - 100),
+            id: `${batchId}_${i}`, type, side: spawnSide, color: player.color, owner: player.name,
+            x: spawnSide === 'left' ? 120 : WORLD_W - 120, y: (WORLD_H / 2) + (Math.random() * 200 - 100),
             hp: SPECS[type].hp, dmg: SPECS[type].dmg, range: SPECS[type].range, speed: SPECS[type].speed, size: SPECS[type].size,
             lastAttack: 0, dead: false, action: 'idle', jumpReadyTime: 0, aiming: false, aimStartTime: 0, aimTargetId: null,
-            charging: (type === 'tank'), 
-            stunEndTime: 0,
-            // [NEW] Mage Properties
-            mageShield: (type === 'mage'),
-            invincibleTime: 0
+            charging: (type === 'tank'), stunEndTime: 0,
+            mageShield: (type === 'mage'), invincibleTime: 0
         };
         room.units.push(u);
     }
@@ -538,7 +418,7 @@ function endGame(room, winner) {
 function forceStartGame(roomId) {
     const r = rooms[roomId];
     if(r && r.status === 'waiting') {
-        r.status = 'playing'; r.autoStartTimer = null; io.to(roomId).emit('start_game', { players: r.players });
+        r.status = 'playing'; r.autoStartTimer = null; io.to(roomId).emit('start_game', { players: r.players, mode: r.mode }); // ส่ง mode ไปด้วย
     }
 }
 
@@ -563,17 +443,11 @@ function checkMatchQueue() {
 
 io.on('connection', (socket) => {
     socket.on('create_room', (data) => {
-        // [EDITED] Custom ID Check
         let roomId;
         if (data.customId && data.customId.trim() !== "") {
             roomId = data.customId.trim().toUpperCase();
-            if (rooms[roomId]) {
-                socket.emit('error_msg', 'ชื่อห้องนี้มีคนใช้แล้ว (Room ID exists)');
-                return;
-            }
-        } else {
-            roomId = Math.random().toString(36).substr(2, 5).toUpperCase();
-        }
+            if (rooms[roomId]) { socket.emit('error_msg', 'ชื่อห้องนี้มีคนใช้แล้ว (Room ID exists)'); return; }
+        } else { roomId = Math.random().toString(36).substr(2, 5).toUpperCase(); }
 
         rooms[roomId] = {
             id: roomId, mode: data.mode, difficulty: data.difficulty || 'normal', 
@@ -586,7 +460,7 @@ io.on('connection', (socket) => {
             const r = rooms[roomId];
             r.players[0].side = 'left'; r.players[0].ready = true;
             r.players.push({ id: 'bot', name: 'AI Bot', side: 'right', ready: true, color: '#ff0000', energy: 0, energyLevel: 0, isBot: true });
-            r.status = 'playing'; socket.emit('room_created', { roomId }); io.to(roomId).emit('start_game', { players: r.players });
+            r.status = 'playing'; socket.emit('room_created', { roomId }); io.to(roomId).emit('start_game', { players: r.players, mode: 'bot' });
         } else { socket.emit('room_created', { roomId }); updateLobby(roomId); }
     });
 
@@ -602,10 +476,7 @@ io.on('connection', (socket) => {
     socket.on('select_side', (d) => {
         const r = rooms[d.roomId]; if(!r || r.isAutoMatch) return;
         const p = r.players.find(x => x.id === socket.id);
-        
-        // [EDITED] Sandbox ไม่จำกัดจำนวนคนในฝั่ง
         const limit = r.mode === '2v2' ? 2 : (r.mode === 'sandbox' ? 99 : 1);
-        
         if(p && r.players.filter(x => x.side === d.side).length < limit) { p.side = d.side; p.ready = false; updateLobby(d.roomId); }
     });
 
@@ -624,15 +495,15 @@ io.on('connection', (socket) => {
         const hasL = r.players.some(x=>x.side==='left');
         const hasR = r.players.some(x=>x.side==='right');
         
-        // [EDITED] Sandbox Start Logic (เริ่มได้เลยถ้า Ready แม้มีคนเดียว)
         if (r.mode === 'sandbox') {
              if (r.players.length > 0 && r.players.every(x => x.ready && x.side)) {
-                r.status = 'playing'; r.autoStartTimer = null; io.to(rid).emit('start_game', { players: r.players });
+                r.status = 'playing'; r.autoStartTimer = null; 
+                io.to(rid).emit('start_game', { players: r.players, mode: 'sandbox' });
              }
         } else {
-            // Normal Logic
             if (r.players.length >= 2 && r.players.every(x => x.ready && x.side) && hasL && hasR) {
-                r.status = 'playing'; r.autoStartTimer = null; io.to(rid).emit('start_game', { players: r.players });
+                r.status = 'playing'; r.autoStartTimer = null; 
+                io.to(rid).emit('start_game', { players: r.players, mode: r.mode });
             }
         }
     });
@@ -640,21 +511,22 @@ io.on('connection', (socket) => {
     socket.on('spawn_request', (d) => {
         const r = rooms[d.roomId];
         if (r && r.status === 'playing') {
-            const p = r.players.find(x => x.id === socket.id); if(p) spawnUnit(r, p, d.type);
+            const p = r.players.find(x => x.id === socket.id); 
+            // [EDITED] ส่ง side ที่ต้องการเสกไปให้ spawnUnit (เฉพาะ Sandbox)
+            let sideToSpawn = p.side;
+            if (r.mode === 'sandbox' && d.side) sideToSpawn = d.side;
+            
+            if(p) spawnUnit(r, p, d.type, sideToSpawn);
         }
     });
 
-    // Handle Upgrade Request
     socket.on('upgrade_energy', (d) => {
         const r = rooms[d.roomId];
         if (r && r.status === 'playing') {
             const p = r.players.find(x => x.id === socket.id);
             if (p && p.energyLevel < 5) {
                 const cost = UPGRADE_COSTS[p.energyLevel];
-                if (p.energy >= cost) {
-                    p.energy -= cost;
-                    p.energyLevel++;
-                }
+                if (p.energy >= cost) { p.energy -= cost; p.energyLevel++; }
             }
         }
     });
