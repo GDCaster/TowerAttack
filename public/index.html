@@ -300,6 +300,10 @@
             toScr('gameScreen'); 
             initCamera(); 
 
+            // *** FIX LIMIT DISPLAY: Update mySide here too ***
+            const me = data.players.find(p => p.id === socket.id);
+            if(me) mySide = me.side;
+
             const leftNames = data.players.filter(p=>p.side==='left').map(p=>p.name).join(', ');
             const rightNames = data.players.filter(p=>p.side==='right').map(p=>p.name).join(', ');
             document.getElementById('nameL').innerText = leftNames;
