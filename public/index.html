@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Battle War: Net Saver Mode</title>
+    <title>Battle War: Super Net Saver + Cooldown</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -55,8 +55,8 @@
             transform: translate(-50%, -50%); z-index: 10; display: flex; 
             justify-content: center; align-items: center; border: 2px solid white;
             font-size: 16px; 
-            /* [CHANGED] Increased duration to 0.1s to match 100ms server update rate */
-            transition: left 0.1s linear, top 0.1s linear;
+            /* [CHANGED] 0.2s smoothing for 150ms packet rate (Very smooth for laggy net) */
+            transition: left 0.2s linear, top 0.2s linear;
         }
         .unit.walk { animation: walkAnim 0.5s infinite linear; }
         .unit.attack { animation: atkAnim 0.2s linear; }
@@ -78,11 +78,17 @@
         .energy { background: rgba(0,0,0,0.8); color: var(--gold); padding: 5px 20px; border-radius: 20px; border: 1px solid var(--gold); font-size: 24px; font-weight: bold; display: inline-block; }
         
         .dock { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 100; width: 98%; max-width: 650px; justify-content: center; }
-        .card { flex: 1; height: 65px; background: #222; border: 1px solid #444; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.1s; }
+        .card { flex: 1; height: 65px; background: #222; border: 1px solid #444; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.1s; overflow: hidden; }
         .card:active { transform: scale(0.95); border-color: var(--gold); }
         .card.disabled { opacity: 0.4; filter: grayscale(1); }
         .c-icon { font-size: 22px; line-height: 1; }
         .c-cost { font-size: 10px; color: var(--gold); background: black; padding: 1px 5px; border-radius: 8px; margin-top: 2px; }
+
+        /* [NEW] Cooldown Overlay CSS */
+        .cd-overlay { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: rgba(0, 0, 0, 0.7); z-index: 10; pointer-events: none; }
+        .card.cooldown-active { pointer-events: none; }
+        .card.cooldown-active .cd-overlay { height: 100%; transition: none; }
+        .card.cooldown-anim .cd-overlay { height: 0%; transition: height 3s linear; }
 
         #chatCon { position: absolute; bottom: 90px; left: 10px; width: 280px; height: 160px; z-index: 100; display: flex; flex-direction: column; pointer-events: none; }
         #chatBox { flex: 1; overflow-y: auto; padding: 8px; color: white; font-size: 13px; pointer-events: auto; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px 8px 0 0; margin-bottom: 2px; }
@@ -179,13 +185,13 @@
             </div>
         </div>
         <div class="dock">
-            <div class="card" onclick="spawn('sword',20)"><span class="c-icon">⚔️</span><span class="c-cost">20</span></div>
-            <div class="card" onclick="spawn('bow',50)"><span class="c-icon">🏹</span><span class="c-cost">50</span></div>
-            <div class="card" onclick="spawn('assassin',75)"><span class="c-icon">🥷</span><span class="c-cost">75</span></div>
-            <div class="card" onclick="spawn('tank',70)"><span class="c-icon">🛡️</span><span class="c-cost">70</span></div>
-            <div class="card" onclick="spawn('healer',50)"><span class="c-icon">⚕️</span><span class="c-cost">50</span></div>
-            <div class="card" onclick="spawn('mage',100)"><span class="c-icon">🔮</span><span class="c-cost">100</span></div>
-            <div class="card" onclick="spawn('cannon',175)"><span class="c-icon">💣</span><span class="c-cost">175</span></div>
+            <div id="card-sword" class="card" onclick="spawn('sword',20)"><span class="c-icon">⚔️</span><span class="c-cost">20</span><div class="cd-overlay"></div></div>
+            <div id="card-bow" class="card" onclick="spawn('bow',50)"><span class="c-icon">🏹</span><span class="c-cost">50</span><div class="cd-overlay"></div></div>
+            <div id="card-assassin" class="card" onclick="spawn('assassin',75)"><span class="c-icon">🥷</span><span class="c-cost">75</span><div class="cd-overlay"></div></div>
+            <div id="card-tank" class="card" onclick="spawn('tank',70)"><span class="c-icon">🛡️</span><span class="c-cost">70</span><div class="cd-overlay"></div></div>
+            <div id="card-healer" class="card" onclick="spawn('healer',50)"><span class="c-icon">⚕️</span><span class="c-cost">50</span><div class="cd-overlay"></div></div>
+            <div id="card-mage" class="card" onclick="spawn('mage',100)"><span class="c-icon">🔮</span><span class="c-cost">100</span><div class="cd-overlay"></div></div>
+            <div id="card-cannon" class="card" onclick="spawn('cannon',175)"><span class="c-icon">💣</span><span class="c-cost">175</span><div class="cd-overlay"></div></div>
         </div>
     </div>
 
@@ -284,7 +290,29 @@
             document.getElementById('nameR').innerText = rightNames;
         });
 
-        function spawn(t,c){ if(eng>=c) socket.emit('spawn_request', { roomId:rid, type:t }); }
+        // [CHANGED] Logic to include 3s visual Cooldown
+        function spawn(t,c){ 
+            const cardId = 'card-' + t;
+            const cardEl = document.getElementById(cardId);
+            
+            // Check Energy AND Cooldown status
+            if(eng >= c && !cardEl.classList.contains('cooldown-active')) { 
+                socket.emit('spawn_request', { roomId:rid, type:t }); 
+                
+                // Start Cooldown Animation
+                cardEl.classList.add('cooldown-active'); // Locks click
+                
+                // Force a reflow for CSS transition to work
+                void cardEl.offsetWidth; 
+                
+                cardEl.classList.add('cooldown-anim'); // Starts animation
+                
+                // Remove Cooldown after 3s
+                setTimeout(() => {
+                    cardEl.classList.remove('cooldown-active', 'cooldown-anim');
+                }, 3000);
+            } 
+        }
         
         function checkEnter(e) { if(e.key === 'Enter') sendMsg(); }
         function sendMsg() {
@@ -304,8 +332,11 @@
         socket.on('world_update', d=>{
             eng = d.myEng; document.getElementById('eng').innerText = eng;
             document.querySelectorAll('.card').forEach(c=>{
-                const cost = parseInt(c.querySelector('.c-cost').innerText);
-                if(eng<cost) c.classList.add('disabled'); else c.classList.remove('disabled');
+                // Only grey out if not in cooldown
+                if (!c.classList.contains('cooldown-active')) {
+                    const cost = parseInt(c.querySelector('.c-cost').innerText);
+                    if(eng<cost) c.classList.add('disabled'); else c.classList.remove('disabled');
+                }
             });
 
             document.getElementById('hpL').style.width = (d.b.left/10)+'%';

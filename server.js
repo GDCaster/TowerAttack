@@ -39,7 +39,7 @@ let rooms = {};
 let matchQueue = [];
 
 // Game Loop
-// Run logic every 50ms (20 TPS) but send data every 100ms (10 TPS)
+// [OPTIMIZED] Logic runs 50ms, Data sends every 150ms (Super Net Saver)
 setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
@@ -64,20 +64,21 @@ setInterval(() => {
             if (typeof room.serverTick === 'undefined') room.serverTick = 0;
             room.serverTick++;
 
-            // 2. Network Transmission (Runs every 2 ticks = 100ms) -> SAVES BANDWIDTH
-            if (room.serverTick % 2 === 0) {
+            // 2. Network Transmission 
+            // [CHANGED] Modulo 3 means sending every 150ms (Saves bandwidth significantly)
+            if (room.serverTick % 3 === 0) {
                 const packet = {
                     b: room.bases,
                     u: room.units.map(u => ({
                         i: u.id, t: u.type, s: u.side, c: u.color,
                         x: Math.round(u.x), y: Math.round(u.y), h: u.hp,
-                        n: u.owner, // Name is KEPT as requested
+                        n: u.owner, 
                         act: u.action
                     })),
                     proj: room.projectiles.map(p => ({
                         x: Math.round(p.x), y: Math.round(p.y), t: p.type
                     })),
-                    fx: room.effects // Send accumulated effects
+                    fx: room.effects 
                 };
                 
                 room.players.forEach(player => {
@@ -281,7 +282,16 @@ function runBotLogic(room, bot) {
 
 function spawnUnit(room, player, type) {
     if (player.energy < SPECS[type].cost) return;
+
+    // [CHANGED] Server-side Cooldown check (3 Seconds)
+    const now = Date.now();
+    if (!player.cooldowns) player.cooldowns = {}; // Init cooldowns object if missing
+    if (player.cooldowns[type] && now < player.cooldowns[type]) return; // Block spam
+
+    // Apply Cost and Cooldown
     player.energy -= SPECS[type].cost;
+    player.cooldowns[type] = now + 3000; // Set 3s cooldown
+
     const batchId = Date.now() + Math.random();
     const count = 5; 
     for (let i = 0; i < count; i++) {
@@ -331,8 +341,8 @@ function checkMatchQueue() {
         };
 
         const r = rooms[roomId];
-        r.players.push({ id: p1.id, name: p1.name, side: 'left', ready: false, color: COLORS[0], energy: 0, isBot: false });
-        r.players.push({ id: p2.id, name: p2.name, side: 'right', ready: false, color: COLORS[1], energy: 0, isBot: false });
+        r.players.push({ id: p1.id, name: p1.name, side: 'left', ready: false, color: COLORS[0], energy: 0, isBot: false, cooldowns: {} });
+        r.players.push({ id: p2.id, name: p2.name, side: 'right', ready: false, color: COLORS[1], energy: 0, isBot: false, cooldowns: {} });
 
         const p1Socket = io.sockets.sockets.get(p1.id);
         const p2Socket = io.sockets.sockets.get(p2.id);
@@ -353,7 +363,8 @@ io.on('connection', (socket) => {
             id: roomId, mode: data.mode, difficulty: data.difficulty || 'normal',
             maxPlayers, status: 'waiting', bases: { left: 1000, right: 1000 },
             units: [], projectiles: [], effects: [],
-            players: [{ id: socket.id, name: data.name, side: '', ready: false, color: COLORS[0], energy: 0, isBot: false }]
+            // Added cooldowns init
+            players: [{ id: socket.id, name: data.name, side: '', ready: false, color: COLORS[0], energy: 0, isBot: false, cooldowns: {} }]
         };
         socket.join(roomId);
         if (data.mode === 'bot') {
@@ -375,7 +386,8 @@ io.on('connection', (socket) => {
             const usedColors = r.players.map(p => p.color);
             r.players.push({ 
                 id: socket.id, name: data.name, side: '', ready: false, 
-                color: COLORS.find(c => !usedColors.includes(c)) || '#fff', energy: 0, isBot: false 
+                color: COLORS.find(c => !usedColors.includes(c)) || '#fff', energy: 0, isBot: false,
+                cooldowns: {} // Init cooldowns
             });
             socket.join(r.id);
             socket.emit('join_success', { roomId: r.id });
