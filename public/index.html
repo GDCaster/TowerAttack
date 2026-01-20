@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Battle War: Homing Sniper & Smart Assassin</title>
+    <title>Battle War: Updates</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -15,6 +15,7 @@
         @keyframes atkAnim { 0% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-50%) scale(1.4); } 100% { transform: translate(-50%,-50%) scale(1); } }
         @keyframes expand { 0% { transform: translate(-50%,-50%) scale(0); opacity: 0.8; } 100% { transform: translate(-50%,-50%) scale(2); opacity: 0; } }
         @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
+        @keyframes spinScope { 0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); } 50% { transform: translate(-50%, -50%) rotate(180deg) scale(0.8); } 100% { transform: translate(-50%, -50%) rotate(360deg) scale(1); } }
 
         .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 50; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
         .active { display: flex !important; }
@@ -63,31 +64,45 @@
         .proj { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: white; z-index: 12; transform: translate(-50%,-50%); border: 2px solid black; }
         .proj.mage { background: #a29bfe; box-shadow: 0 0 8px #a29bfe; }
         .proj.cannon { background: #333; width: 16px; height: 16px; }
-        .proj.sniper { background: #ffff00; width: 8px; height: 8px; box-shadow: 0 0 10px #ffff00; border: none; }
         
         .aoe { position: absolute; border: 2px solid white; background: rgba(255,255,255,0.2); border-radius: 50%; z-index: 11; animation: expand 0.4s forwards; }
         .aoe.healer { border-color: #2ed573; background: rgba(46, 213, 115, 0.2); }
 
+        .aim-scope {
+            position: absolute; width: 40px; height: 40px;
+            border: 2px solid #ff0000; border-radius: 50%;
+            z-index: 100; transform: translate(-50%, -50%);
+            box-shadow: 0 0 10px red;
+            background: rgba(255, 0, 0, 0.1);
+            pointer-events: none;
+            animation: spinScope 1s infinite linear;
+        }
+        .aim-scope::after, .aim-scope::before { content: ''; position: absolute; background: #ff0000; }
+        .aim-scope::after { top: 50%; left: 0; width: 100%; height: 1px; }
+        .aim-scope::before { top: 0; left: 50%; width: 1px; height: 100%; }
+
         .dmg { position: absolute; color: #ff4757; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
         .heal-text { position: absolute; color: #2ed573; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
 
-        .hud-top { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; pointer-events: none; }
+        /* ปรับตำแหน่ง Energy ลงมาข้างล่าง */
+        .hud-bottom { position: absolute; bottom: 120px; width: 100%; text-align: center; z-index: 100; pointer-events: none; }
         .energy { background: rgba(0,0,0,0.8); color: var(--gold); padding: 5px 20px; border-radius: 20px; border: 1px solid var(--gold); font-size: 24px; font-weight: bold; display: inline-block; }
         
-        .dock { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 100; width: 98%; max-width: 700px; justify-content: center; flex-wrap: wrap; }
+        /* ดันการ์ดขึ้นมานิดหน่อยเพื่อให้เห็น Limit */
+        .dock { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 100; width: 98%; max-width: 700px; justify-content: center; flex-wrap: wrap; }
         .card { width: 62px; height: 75px; background: #222; border: 1px solid #444; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.1s; overflow: hidden; flex-shrink: 0; }
         .card:active { transform: scale(0.95); border-color: var(--gold); }
         .card.disabled { opacity: 0.4; filter: grayscale(1); }
         .c-icon { font-size: 22px; line-height: 1; margin-bottom: 2px; }
         .c-cost { font-size: 10px; color: var(--gold); background: black; padding: 1px 5px; border-radius: 8px; }
-        .c-limit { font-size: 9px; color: #aaa; margin-top: 2px; }
+        .c-limit { font-size: 10px; color: #fff; margin-top: 2px; background: rgba(0,0,0,0.5); border-radius:4px; padding:0 2px; }
 
         .cd-overlay { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: rgba(0, 0, 0, 0.7); z-index: 10; pointer-events: none; }
         .card.cooldown-active { pointer-events: none; }
         .card.cooldown-active .cd-overlay { height: 100%; transition: none; }
         .card.cooldown-anim .cd-overlay { height: 0%; transition: height 3s linear; }
 
-        #chatCon { position: absolute; bottom: 90px; left: 10px; width: 280px; height: 160px; z-index: 100; display: flex; flex-direction: column; pointer-events: none; }
+        #chatCon { position: absolute; top: 10px; left: 10px; width: 280px; height: 160px; z-index: 100; display: flex; flex-direction: column; pointer-events: none; }
         #chatBox { flex: 1; overflow-y: auto; padding: 8px; color: white; font-size: 13px; pointer-events: auto; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px 8px 0 0; margin-bottom: 2px; }
         #chatBox div { text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; }
         .chat-input-row { display: flex; width: 100%; pointer-events: auto; }
@@ -103,7 +118,7 @@
 
     <div id="menuScreen" class="screen active">
         <h1 style="color:var(--gold); font-size:40px;">BATTLE WAR</h1>
-        <p style="color:#777; margin-bottom:20px;">Homing & Smart Assassin</p>
+        <p style="color:#777; margin-bottom:20px;">Chase & UI Update</p>
         <input type="text" id="pName" placeholder="ชื่อตัวละคร" maxlength="10">
         
         <button class="btn btn-blue" style="width:80%; max-width:300px; padding:15px; font-size:20px;" onclick="startMatchmaking()">🔍 Auto Match (1v1)</button>
@@ -172,7 +187,7 @@
                 <div id="fxLayer"></div>
             </div>
         </div>
-        <div class="hud-top"><div class="energy">⚡ <span id="eng">0</span>/300</div></div>
+        
         <div id="chatCon">
             <div id="chatBox"></div>
             <div class="chat-input-row">
@@ -180,6 +195,9 @@
                 <button id="chatSendBtn" onclick="sendMsg()">ส่ง</button>
             </div>
         </div>
+
+        <div class="hud-bottom"><div class="energy">⚡ <span id="eng">0</span>/300</div></div>
+        
         <div class="dock">
             <div id="card-sword" class="card" onclick="spawn('sword',20)"><span class="c-icon">⚔️</span><span class="c-cost">20</span><span class="c-limit" id="lim-sword">0/40</span><div class="cd-overlay"></div></div>
             <div id="card-bow" class="card" onclick="spawn('bow',45)"><span class="c-icon">🏹</span><span class="c-cost">45</span><span class="c-limit" id="lim-bow">0/30</span><div class="cd-overlay"></div></div>
@@ -197,8 +215,6 @@
         let rid=null, mySide=null, eng=0;
         let timerInterval = null;
         const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️', sniper:'🔫' };
-        
-        // Match limits for display
         const LIMITS = { sword:40, tank:40, assassin:40, bow:30, mage:30, healer:30, sniper:30, cannon:15 };
 
         // --- MENU & LOBBY ---
@@ -261,7 +277,6 @@
         function tReady(){ socket.emit('toggle_ready', rid); }
         function toScr(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
 
-        // Matchmaking
         function startMatchmaking() {
             const name = v('pName') || 'Player';
             socket.emit('find_match', { name });
@@ -284,9 +299,8 @@
         function spawn(t,c){ 
             const cardEl = document.getElementById('card-' + t);
             const limEl = document.getElementById('lim-' + t);
-            
             const [cur, max] = limEl.innerText.split('/').map(Number);
-            if(cur >= max) return; // Limit reached
+            if(cur >= max) return; 
 
             if(eng >= c && !cardEl.classList.contains('cooldown-active')) { 
                 socket.emit('spawn_request', { roomId:rid, type:t }); 
@@ -313,7 +327,9 @@
         });
 
         socket.on('world_update', d=>{
-            eng = d.myEng; document.getElementById('eng').innerText = eng + "/300";
+            // แก้ไขการแสดงผลพลังงาน
+            eng = d.myEng; 
+            document.getElementById('eng').innerText = eng; // ไม่ต้องบวก "/300" ซ้ำ เพราะใน HTML มีเขียนรอไว้แล้ว
             
             const myCounts = {};
             d.u.forEach(u => {
@@ -328,15 +344,9 @@
                     const type = c.id.replace('card-','');
                     const curCount = myCounts[type] || 0;
                     const maxCount = LIMITS[type];
-                    
                     const limText = document.getElementById('lim-' + type);
                     if(limText) limText.innerText = `${curCount}/${maxCount}`;
-
-                    if(eng < cost || curCount >= maxCount) {
-                        c.classList.add('disabled');
-                    } else {
-                        c.classList.remove('disabled');
-                    }
+                    if(eng < cost || curCount >= maxCount) c.classList.add('disabled'); else c.classList.remove('disabled');
                 }
             });
 
@@ -346,6 +356,7 @@
             const uL = document.getElementById('uLayer');
             const fxL = document.getElementById('fxLayer');
             const exist = new Set();
+            const aimingAt = new Set(); 
 
             d.u.forEach(u=>{
                 exist.add(u.i);
@@ -362,8 +373,31 @@
                 el.classList.remove('walk', 'attack');
                 if(u.act === 'walk') el.classList.add('walk');
                 else if(u.act === 'attack') el.classList.add('attack');
+
+                if(u.aimTarget) {
+                    aimingAt.add(u.aimTarget);
+                    let targetEl = document.getElementById(u.aimTarget);
+                    let scopeId = 'scope_' + u.i;
+                    let scopeEl = document.getElementById(scopeId);
+                    
+                    if(targetEl) {
+                        if(!scopeEl) {
+                            scopeEl = document.createElement('div'); scopeEl.id = scopeId; scopeEl.className = 'aim-scope'; fxL.appendChild(scopeEl);
+                        }
+                        scopeEl.style.left = targetEl.style.left; scopeEl.style.top = targetEl.style.top;
+                    } else if (scopeEl) { scopeEl.remove(); }
+                } else {
+                    let scopeEl = document.getElementById('scope_' + u.i);
+                    if(scopeEl) scopeEl.remove();
+                }
             });
+
             Array.from(uL.children).forEach(e=>{ if(!exist.has(e.id)) e.remove(); });
+            
+            document.querySelectorAll('.aim-scope').forEach(scope => {
+                const sniperId = scope.id.replace('scope_', '');
+                if (!exist.has(sniperId)) scope.remove();
+            });
 
             document.querySelectorAll('.proj').forEach(e=>e.remove());
             d.proj.forEach(p=>{
