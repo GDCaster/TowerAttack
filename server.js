@@ -12,16 +12,21 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- GAME CONFIG ---
 const WORLD_W = 1600;
 const WORLD_H = 900;
-const MAX_ENERGY = 200;
+// [UPDATE] Max Energy increased to 300
+const MAX_ENERGY = 300; 
 
+// [UPDATE] Added 'limit', 'sniper' class, and updated Assassin specs
 const SPECS = {
-    sword:    { hp: 45,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 800 },
-    bow:      { hp: 20,  dmg: 5,  range: 300, speed: 2.5, size: 30, cost: 45, atkRate: 1500 },
-    tank:     { hp: 150, dmg: 5,  range: 50,  speed: 2.5, size: 36, cost: 75, atkRate: 1500 },
-    mage:     { hp: 30,  dmg: 10,  range: 250, speed: 2.0, size: 30, cost: 125, atkRate: 1000, type:'aoe', radius: 40 },
-    assassin: { hp: 15,  dmg: 5, range: 65,  speed: 4.5, size: 25, cost: 80, atkRate: 500, special: 'jump', type: 'hybrid', radius: 65 },
-    cannon:   { hp: 70,  dmg: 20, range: 350, speed: 1.5, size: 40, cost: 175, atkRate: 4500, type:'aoe', radius: 125 },
-    healer:   { hp: 25,  dmg: 0,  range: 150, speed: 2.5, size: 28, cost: 50, atkRate: 3000, type: 'support', radius: 195 }
+    sword:    { hp: 25,  dmg: 5,  range: 50,  speed: 2.5, size: 30, cost: 20, atkRate: 1200, limit: 40, type: 'melee' },
+    bow:      { hp: 20,  dmg: 5,  range: 300, speed: 2.5, size: 30, cost: 45, atkRate: 1500, limit: 30, type: 'ranged' },
+    tank:     { hp: 150, dmg: 5,  range: 50,  speed: 2.5, size: 36, cost: 75, atkRate: 1500, limit: 40, type: 'melee' },
+    mage:     { hp: 25,  dmg: 10, range: 250, speed: 2.0, size: 30, cost: 125, atkRate: 1000, limit: 30, type: 'aoe', radius: 40, baseType: 'ranged' },
+    // Assassin: Speed 4.5 -> 6.0, obsRange added, jumpCd added
+    assassin: { hp: 15,  dmg: 5,  range: 65,  speed: 6.0, size: 25, cost: 80, atkRate: 500,  limit: 40, type: 'hybrid', radius: 65, obsRange: 1400, jumpCd: 7000 },
+    cannon:   { hp: 70,  dmg: 20, range: 350, speed: 1.5, size: 40, cost: 175, atkRate: 4500, limit: 20, type: 'aoe', radius: 125, baseType: 'ranged' },
+    healer:   { hp: 25,  dmg: 0,  range: 150, speed: 2.5, size: 28, cost: 50, atkRate: 3000, limit: 30, type: 'support', radius: 195, baseType: 'ranged' },
+    // Sniper: High dmg, Long range, unique target logic
+    sniper:   { hp: 40,  dmg: 100, range: 400, speed: 2.0, size: 30, cost: 100, atkRate: 8000, limit: 30, type: 'ranged' }
 };
 
 const BOT_SETTINGS = {
@@ -39,7 +44,6 @@ let rooms = {};
 let matchQueue = [];
 
 // Game Loop
-// [OPTIMIZED] Logic runs 50ms, Data sends every 150ms (Super Net Saver)
 setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
@@ -51,29 +55,22 @@ setInterval(() => {
         // Auto Match Timer
         if (room.autoStartTimer && room.status === 'waiting') {
             const timeLeft = Math.ceil((room.autoStartTime - Date.now()) / 1000);
-            if (timeLeft <= 0) {
-                forceStartGame(roomId);
-            }
+            if (timeLeft <= 0) forceStartGame(roomId);
         }
 
         if (room.status === 'playing') {
-            // 1. Logic Calculation (Always runs to keep physics consistent)
             updateGame(room);
 
-            // Initialize tick counter
             if (typeof room.serverTick === 'undefined') room.serverTick = 0;
             room.serverTick++;
 
-            // 2. Network Transmission 
-            // [CHANGED] Modulo 3 means sending every 150ms (Saves bandwidth significantly)
             if (room.serverTick % 3 === 0) {
                 const packet = {
                     b: room.bases,
                     u: room.units.map(u => ({
                         i: u.id, t: u.type, s: u.side, c: u.color,
                         x: Math.round(u.x), y: Math.round(u.y), h: u.hp,
-                        n: u.owner, 
-                        act: u.action
+                        n: u.owner, act: u.action
                     })),
                     proj: room.projectiles.map(p => ({
                         x: Math.round(p.x), y: Math.round(p.y), t: p.type
@@ -87,7 +84,6 @@ setInterval(() => {
                     io.to(player.id).emit('world_update', packet);
                 });
 
-                // Clear effects only after sending
                 room.effects = [];
             }
         }
@@ -118,18 +114,14 @@ function updateGame(room) {
         // --- HEALER LOGIC ---
         if (u.type === 'healer') {
             const friendsToHeal = room.units.filter(friend => 
-                friend.side === u.side && 
-                !friend.dead && 
-                friend.id !== u.id &&
+                friend.side === u.side && !friend.dead && friend.id !== u.id &&
                 Math.hypot(u.x - friend.x, u.y - friend.y) <= SPECS.healer.radius &&
                 friend.hp < SPECS[friend.type].hp
             );
-
             const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
             const distToBase = Math.abs(u.x - enemyBaseX);
-            const atBaseLimit = distToBase <= SPECS.healer.range;
 
-            if (friendsToHeal.length > 0 || atBaseLimit) {
+            if (friendsToHeal.length > 0 || distToBase <= SPECS.healer.range) {
                 u.action = 'idle';
                 if (friendsToHeal.length > 0 && now - u.lastAttack > SPECS.healer.atkRate) {
                     u.lastAttack = now;
@@ -141,36 +133,116 @@ function updateGame(room) {
                     room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.healer.radius, t: 'healer' });
                 }
             } else {
-                const dir = u.side === 'left' ? 1 : -1;
-                u.x += dir * u.speed;
+                u.x += (u.side === 'left' ? 1 : -1) * u.speed;
                 u.action = 'walk';
             }
-
-            const mid = WORLD_H / 2;
-            if (u.y < mid - 100) u.y += 0.5;
-            if (u.y > mid + 100) u.y -= 0.5;
+            // Keep in lane
+            if (u.y < (WORLD_H/2) - 100) u.y += 0.5;
+            if (u.y > (WORLD_H/2) + 100) u.y -= 0.5;
             return;
         }
 
-        // --- ATTACKER LOGIC ---
+        // --- ASSASSIN LOGIC [UPDATED] ---
+        if (u.type === 'assassin') {
+            // 1. Observation Phase
+            const enemiesInRange = room.units.filter(e => e.side !== u.side && !e.dead && Math.hypot(u.x - e.x, u.y - e.y) <= SPECS.assassin.obsRange);
+            
+            let target = null;
+
+            // Prioritize Ranged Units (Furthest range first)
+            const rangedTargets = enemiesInRange.filter(e => 
+                ['bow', 'mage', 'cannon', 'sniper', 'healer'].includes(e.type)
+            );
+
+            if (rangedTargets.length > 0) {
+                // Sort by range descending (Attack the one with longest range)
+                rangedTargets.sort((a, b) => SPECS[b.type].range - SPECS[a.type].range);
+                target = rangedTargets[0];
+            } else {
+                // Fallback: Closest enemy (Melee)
+                let minDist = 9999;
+                enemiesInRange.forEach(e => {
+                    const d = Math.hypot(u.x - e.x, u.y - e.y);
+                    if(d < minDist) { minDist = d; target = e; }
+                });
+            }
+
+            // Logic: Move or Jump
+            if (target) {
+                const dist = Math.hypot(u.x - target.x, u.y - target.y);
+                
+                // Jump Skill (Cooldown 7s)
+                // [CHANGED] Repeated jumps allowed with cooldown
+                if (dist <= 350 && dist > 50 && (!u.jumpReadyTime || now > u.jumpReadyTime)) {
+                    const offset = u.side === 'left' ? 40 : -40;
+                    u.x = target.x + offset;
+                    u.y = target.y;
+                    u.jumpReadyTime = now + SPECS.assassin.jumpCd; // 7s Cooldown
+                    room.effects.push({ type: 'warp', x: u.x, y: u.y });
+                    
+                    // Instant slash on arrival
+                    target.hp -= 15;
+                    room.effects.push({ type: 'dmg', x: target.x, y: target.y, val: 15 });
+                    room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.assassin.radius, t: 'assassin' });
+                } 
+                else if (dist <= SPECS.assassin.range) {
+                    // Normal Attack
+                    if (now - u.lastAttack > SPECS.assassin.atkRate) {
+                        u.lastAttack = now;
+                        u.action = 'attack';
+                        target.hp -= u.dmg;
+                        room.effects.push({ type: 'dmg', x: target.x, y: target.y, val: u.dmg });
+                        if (target.hp <= 0) target.dead = true;
+                    }
+                } else {
+                    // Move towards target
+                    const angle = Math.atan2(target.y - u.y, target.x - u.x);
+                    u.x += Math.cos(angle) * u.speed;
+                    u.y += Math.sin(angle) * u.speed;
+                    u.action = 'walk';
+                }
+            } else {
+                // No target, walk to base
+                const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
+                const distToBase = Math.abs(u.x - enemyBaseX);
+                if (distToBase <= SPECS.assassin.range) {
+                    if (now - u.lastAttack > SPECS.assassin.atkRate) {
+                        u.lastAttack = now;
+                        u.action = 'attack';
+                        const targetSide = u.side === 'left' ? 'right' : 'left';
+                        room.bases[targetSide] -= u.dmg;
+                        room.effects.push({ type: 'dmg', x: enemyBaseX, y: WORLD_H/2, val: u.dmg });
+                        if (room.bases[targetSide] <= 0) endGame(room, u.side);
+                    }
+                } else {
+                    u.x += (u.side === 'left' ? 1 : -1) * u.speed;
+                    u.action = 'walk';
+                }
+            }
+            
+            return; // End Assassin Logic
+        }
+
+        // --- NORMAL & SNIPER LOGIC ---
         let target = null;
         let minDist = 999;
 
+        // Find targets
         room.units.forEach(o => {
             if (o.side !== u.side && !o.dead) {
                 const dist = Math.hypot(u.x - o.x, u.y - o.y);
+                
+                // [SNIPER LOGIC] Avoid repeated targets if possible
+                if (u.type === 'sniper' && u.lastTargetId === o.id) {
+                    // If this is the *only* target, consider it, otherwise prioritize others by artificially increasing dist
+                    if (room.units.filter(x => x.side !== u.side && !x.dead).length > 1) {
+                         return; // Skip this target to look for others
+                    }
+                }
+
                 if (dist < minDist) { minDist = dist; target = o; }
             }
         });
-
-        if (u.type === 'assassin' && target && !u.hasJumped && minDist < 350) {
-            const offset = u.side === 'left' ? 40 : -40;
-            u.x = target.x + offset;
-            u.y = target.y;
-            u.hasJumped = true;
-            u.slashDone = false;
-            room.effects.push({ type: 'warp', x: u.x, y: u.y });
-        }
 
         const enemyBaseX = u.side === 'left' ? WORLD_W - 100 : 100;
         const distToBase = Math.abs(u.x - enemyBaseX);
@@ -190,31 +262,10 @@ function updateGame(room) {
                 u.lastAttack = now;
                 u.action = 'attack';
                 
-                if (u.type === 'mage' || u.type === 'cannon') {
+                if (u.type === 'mage' || u.type === 'cannon' || u.type === 'bow' || u.type === 'sniper') {
                     spawnProjectile(room, u, target);
-                } 
-                else if (u.type === 'assassin') {
-                    if (!u.slashDone) {
-                        const slashDmg = 15;
-                        room.units.forEach(enemy => {
-                            if(enemy.side !== u.side && !enemy.dead) {
-                                const d = Math.hypot(u.x - enemy.x, u.y - enemy.y);
-                                if(d <= SPECS.assassin.radius) {
-                                    enemy.hp -= slashDmg;
-                                    room.effects.push({ type: 'dmg', x: enemy.x, y: enemy.y, val: slashDmg });
-                                    if (enemy.hp <= 0) enemy.dead = true;
-                                }
-                            }
-                        });
-                        room.effects.push({ type: 'aoe', x: u.x, y: u.y, r: SPECS.assassin.radius, t: 'assassin' });
-                        u.slashDone = true; 
-                    } else {
-                        target.hp -= u.dmg;
-                        room.effects.push({ type: 'dmg', x: target.x, y: target.y, val: u.dmg });
-                        if (target.hp <= 0) target.dead = true;
-                    }
-                }
-                else {
+                    if (u.type === 'sniper') u.lastTargetId = target.id; // Remember target
+                } else {
                     target.hp -= u.dmg;
                     room.effects.push({ type: 'dmg', x: target.x, y: target.y, val: u.dmg });
                     if (target.hp <= 0) target.dead = true;
@@ -236,8 +287,9 @@ function updateGame(room) {
 function spawnProjectile(room, owner, target) {
     room.projectiles.push({
         x: owner.x, y: owner.y, tx: target.x, ty: target.y,
-        speed: owner.type === 'cannon' ? 14 : 10,
-        dmg: SPECS[owner.type].dmg, radius: SPECS[owner.type].radius,
+        speed: owner.type === 'cannon' ? 14 : (owner.type === 'sniper' ? 20 : 10),
+        dmg: SPECS[owner.type].dmg, 
+        radius: SPECS[owner.type].radius || 10,
         type: owner.type, side: owner.side
     });
 }
@@ -250,6 +302,7 @@ function updateProjectiles(room) {
         const dist = Math.hypot(dx, dy);
 
         if (dist < p.speed) {
+            // Hit logic
             room.units.forEach(u => {
                 if (u.side !== p.side && !u.dead) {
                     const d = Math.hypot(u.x - p.tx, u.y - p.ty);
@@ -260,7 +313,9 @@ function updateProjectiles(room) {
                     }
                 }
             });
-            room.effects.push({ type: 'aoe', x: p.tx, y: p.ty, r: p.radius, t: p.type });
+            if (p.type === 'mage' || p.type === 'cannon') {
+                room.effects.push({ type: 'aoe', x: p.tx, y: p.ty, r: p.radius, t: p.type });
+            }
             room.projectiles.splice(i, 1);
         } else {
             const angle = Math.atan2(dy, dx);
@@ -283,16 +338,20 @@ function runBotLogic(room, bot) {
 function spawnUnit(room, player, type) {
     if (player.energy < SPECS[type].cost) return;
 
-    // [CHANGED] Server-side Cooldown check (3 Seconds)
-    const now = Date.now();
-    if (!player.cooldowns) player.cooldowns = {}; // Init cooldowns object if missing
-    if (player.cooldowns[type] && now < player.cooldowns[type]) return; // Block spam
+    // [UPDATE] Check Limit per Type
+    const currentCount = room.units.filter(u => u.side === player.side && u.type === type).length;
+    if (SPECS[type].limit && currentCount >= SPECS[type].limit) return; // Limit Reached
 
-    // Apply Cost and Cooldown
+    const now = Date.now();
+    if (!player.cooldowns) player.cooldowns = {};
+    if (player.cooldowns[type] && now < player.cooldowns[type]) return;
+
     player.energy -= SPECS[type].cost;
-    player.cooldowns[type] = now + 3000; // Set 3s cooldown
+    player.cooldowns[type] = now + 3000;
 
     const batchId = Date.now() + Math.random();
+    // Sniper/Cannon spawns fewer units per card to balance, others spawn 5
+    // But keeping original logic: Loop 5 times
     const count = 5; 
     for (let i = 0; i < count; i++) {
         room.units.push({
@@ -303,7 +362,7 @@ function spawnUnit(room, player, type) {
             hp: SPECS[type].hp, dmg: SPECS[type].dmg,
             range: SPECS[type].range, speed: SPECS[type].speed,
             lastAttack: 0, dead: false, action: 'idle', 
-            hasJumped: false, slashDone: false
+            jumpReadyTime: 0 // For Assassin
         });
     }
 }
@@ -363,7 +422,6 @@ io.on('connection', (socket) => {
             id: roomId, mode: data.mode, difficulty: data.difficulty || 'normal',
             maxPlayers, status: 'waiting', bases: { left: 1000, right: 1000 },
             units: [], projectiles: [], effects: [],
-            // Added cooldowns init
             players: [{ id: socket.id, name: data.name, side: '', ready: false, color: COLORS[0], energy: 0, isBot: false, cooldowns: {} }]
         };
         socket.join(roomId);
@@ -387,7 +445,7 @@ io.on('connection', (socket) => {
             r.players.push({ 
                 id: socket.id, name: data.name, side: '', ready: false, 
                 color: COLORS.find(c => !usedColors.includes(c)) || '#fff', energy: 0, isBot: false,
-                cooldowns: {} // Init cooldowns
+                cooldowns: {}
             });
             socket.join(r.id);
             socket.emit('join_success', { roomId: r.id });

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Battle War: Super Net Saver + Cooldown</title>
+    <title>Battle War: Sniper & Limits Update</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -17,7 +17,6 @@
         
         @keyframes walkAnim { 0% { transform: translate(-50%,-50%) rotate(-5deg); } 50% { transform: translate(-50%,-50%) rotate(5deg); } 100% { transform: translate(-50%,-50%) rotate(-5deg); } }
         @keyframes atkAnim { 0% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-50%) scale(1.4); } 100% { transform: translate(-50%,-50%) scale(1); } }
-        @keyframes pulse { 0% { opacity: 0.5; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0.5; transform: scale(0.9); } }
 
         .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 50; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
         .active { display: flex !important; }
@@ -55,7 +54,6 @@
             transform: translate(-50%, -50%); z-index: 10; display: flex; 
             justify-content: center; align-items: center; border: 2px solid white;
             font-size: 16px; 
-            /* [CHANGED] 0.2s smoothing for 150ms packet rate (Very smooth for laggy net) */
             transition: left 0.2s linear, top 0.2s linear;
         }
         .unit.walk { animation: walkAnim 0.5s infinite linear; }
@@ -67,6 +65,7 @@
         .proj { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: white; z-index: 12; transform: translate(-50%,-50%); border: 2px solid black; }
         .proj.mage { background: #a29bfe; box-shadow: 0 0 8px #a29bfe; }
         .proj.cannon { background: #333; width: 16px; height: 16px; }
+        .proj.sniper { background: #ffeb3b; width: 6px; height: 6px; box-shadow: 0 0 10px #ffeb3b; }
         
         .aoe { position: absolute; border: 2px solid white; background: rgba(255,255,255,0.2); border-radius: 50%; z-index: 11; animation: expand 0.4s forwards; }
         .aoe.healer { border-color: #2ed573; background: rgba(46, 213, 115, 0.2); }
@@ -77,14 +76,13 @@
         .hud-top { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; pointer-events: none; }
         .energy { background: rgba(0,0,0,0.8); color: var(--gold); padding: 5px 20px; border-radius: 20px; border: 1px solid var(--gold); font-size: 24px; font-weight: bold; display: inline-block; }
         
-        .dock { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 100; width: 98%; max-width: 650px; justify-content: center; }
-        .card { flex: 1; height: 65px; background: #222; border: 1px solid #444; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.1s; overflow: hidden; }
+        .dock { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 100; width: 98%; max-width: 700px; justify-content: center; flex-wrap: wrap; }
+        .card { width: 60px; height: 65px; background: #222; border: 1px solid #444; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.1s; overflow: hidden; flex-shrink: 0; }
         .card:active { transform: scale(0.95); border-color: var(--gold); }
         .card.disabled { opacity: 0.4; filter: grayscale(1); }
-        .c-icon { font-size: 22px; line-height: 1; }
+        .c-icon { font-size: 20px; line-height: 1; }
         .c-cost { font-size: 10px; color: var(--gold); background: black; padding: 1px 5px; border-radius: 8px; margin-top: 2px; }
 
-        /* [NEW] Cooldown Overlay CSS */
         .cd-overlay { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: rgba(0, 0, 0, 0.7); z-index: 10; pointer-events: none; }
         .card.cooldown-active { pointer-events: none; }
         .card.cooldown-active .cd-overlay { height: 100%; transition: none; }
@@ -107,7 +105,7 @@
 
     <div id="menuScreen" class="screen active">
         <h1 style="color:var(--gold); font-size:40px;">BATTLE WAR</h1>
-        <p style="color:#777; margin-bottom:20px;">Zoom & Mobile Edition</p>
+        <p style="color:#777; margin-bottom:20px;">Limit & Sniper Update</p>
         <input type="text" id="pName" placeholder="ชื่อตัวละคร" maxlength="10">
         
         <button class="btn btn-blue" style="width:80%; max-width:300px; padding:15px; font-size:20px;" onclick="startMatchmaking()">🔍 Auto Match (1v1)</button>
@@ -176,7 +174,7 @@
                 <div id="fxLayer"></div>
             </div>
         </div>
-        <div class="hud-top"><div class="energy">⚡ <span id="eng">0</span></div></div>
+        <div class="hud-top"><div class="energy">⚡ <span id="eng">0</span>/300</div></div>
         <div id="chatCon">
             <div id="chatBox"></div>
             <div class="chat-input-row">
@@ -186,11 +184,12 @@
         </div>
         <div class="dock">
             <div id="card-sword" class="card" onclick="spawn('sword',20)"><span class="c-icon">⚔️</span><span class="c-cost">20</span><div class="cd-overlay"></div></div>
-            <div id="card-bow" class="card" onclick="spawn('bow',50)"><span class="c-icon">🏹</span><span class="c-cost">45</span><div class="cd-overlay"></div></div>
-            <div id="card-assassin" class="card" onclick="spawn('assassin',75)"><span class="c-icon">🥷</span><span class="c-cost">80</span><div class="cd-overlay"></div></div>
-            <div id="card-tank" class="card" onclick="spawn('tank',70)"><span class="c-icon">🛡️</span><span class="c-cost">75</span><div class="cd-overlay"></div></div>
+            <div id="card-bow" class="card" onclick="spawn('bow',45)"><span class="c-icon">🏹</span><span class="c-cost">45</span><div class="cd-overlay"></div></div>
+            <div id="card-assassin" class="card" onclick="spawn('assassin',80)"><span class="c-icon">🥷</span><span class="c-cost">80</span><div class="cd-overlay"></div></div>
+            <div id="card-tank" class="card" onclick="spawn('tank',75)"><span class="c-icon">🛡️</span><span class="c-cost">75</span><div class="cd-overlay"></div></div>
             <div id="card-healer" class="card" onclick="spawn('healer',50)"><span class="c-icon">⚕️</span><span class="c-cost">50</span><div class="cd-overlay"></div></div>
-            <div id="card-mage" class="card" onclick="spawn('mage',100)"><span class="c-icon">🔮</span><span class="c-cost">125</span><div class="cd-overlay"></div></div>
+            <div id="card-mage" class="card" onclick="spawn('mage',125)"><span class="c-icon">🔮</span><span class="c-cost">125</span><div class="cd-overlay"></div></div>
+            <div id="card-sniper" class="card" onclick="spawn('sniper',100)"><span class="c-icon">🔫</span><span class="c-cost">100</span><div class="cd-overlay"></div></div>
             <div id="card-cannon" class="card" onclick="spawn('cannon',175)"><span class="c-icon">💣</span><span class="c-cost">175</span><div class="cd-overlay"></div></div>
         </div>
     </div>
@@ -199,7 +198,7 @@
         const socket = io();
         let rid=null, mySide=null, eng=0;
         let timerInterval = null;
-        const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️' };
+        const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️', sniper:'🔫' };
 
         // --- MENU & LOBBY ---
         function toggleBot(){ document.getElementById('botOpt').style.display = document.getElementById('gMode').value==='bot'?'block':'none'; }
@@ -210,12 +209,7 @@
         socket.on('join_success', d=>{ 
             rid=d.roomId; 
             toScr('lobbyScreen'); 
-            
-            if(d.isAuto) {
-                document.getElementById('autoTimer').style.display = 'block';
-            } else {
-                document.getElementById('autoTimer').style.display = 'none';
-            }
+            document.getElementById('autoTimer').style.display = d.isAuto ? 'block' : 'none';
         });
 
         socket.on('auto_match_timer', d=>{
@@ -223,8 +217,7 @@
             const el = document.getElementById('timerNum');
             if(timerInterval) clearInterval(timerInterval);
             timerInterval = setInterval(()=>{
-                sec--;
-                el.innerText = sec;
+                sec--; el.innerText = sec;
                 if(sec <= 0) clearInterval(timerInterval);
             }, 1000);
         });
@@ -273,10 +266,7 @@
             socket.emit('find_match', { name });
             toScr('matchScreen');
         }
-        function cancelMatch() {
-            socket.emit('cancel_match');
-            toScr('menuScreen');
-        }
+        function cancelMatch() { socket.emit('cancel_match'); toScr('menuScreen'); }
 
         // --- GAME LOGIC ---
         socket.on('start_game', (data)=>{ 
@@ -290,27 +280,16 @@
             document.getElementById('nameR').innerText = rightNames;
         });
 
-        // [CHANGED] Logic to include 3s visual Cooldown
         function spawn(t,c){ 
             const cardId = 'card-' + t;
             const cardEl = document.getElementById(cardId);
             
-            // Check Energy AND Cooldown status
             if(eng >= c && !cardEl.classList.contains('cooldown-active')) { 
                 socket.emit('spawn_request', { roomId:rid, type:t }); 
-                
-                // Start Cooldown Animation
-                cardEl.classList.add('cooldown-active'); // Locks click
-                
-                // Force a reflow for CSS transition to work
+                cardEl.classList.add('cooldown-active'); 
                 void cardEl.offsetWidth; 
-                
-                cardEl.classList.add('cooldown-anim'); // Starts animation
-                
-                // Remove Cooldown after 3s
-                setTimeout(() => {
-                    cardEl.classList.remove('cooldown-active', 'cooldown-anim');
-                }, 3000);
+                cardEl.classList.add('cooldown-anim'); 
+                setTimeout(() => { cardEl.classList.remove('cooldown-active', 'cooldown-anim'); }, 3000);
             } 
         }
         
@@ -332,7 +311,6 @@
         socket.on('world_update', d=>{
             eng = d.myEng; document.getElementById('eng').innerText = eng;
             document.querySelectorAll('.card').forEach(c=>{
-                // Only grey out if not in cooldown
                 if (!c.classList.contains('cooldown-active')) {
                     const cost = parseInt(c.querySelector('.c-cost').innerText);
                     if(eng<cost) c.classList.add('disabled'); else c.classList.remove('disabled');
@@ -385,7 +363,6 @@
                 else if(f.type==='aoe'){
                     const e=document.createElement('div'); e.className='aoe'; 
                     if(f.t === 'healer') e.classList.add('healer');
-                    
                     e.style.left=f.x+'px'; e.style.top=f.y+'px';
                     e.style.width=(f.r*2)+'px'; e.style.height=(f.r*2)+'px';
                     if(f.t === 'assassin') e.style.borderColor = '#ff4757'; 
