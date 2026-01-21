@@ -3,96 +3,189 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Coup Online TH</title>
+    <title>Coup Online: Gold Edition</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <style>
+        :root { --bg: #0a0a0a; --gold: #FFD700; --red: #ff4757; --gray: #333; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Kanit', sans-serif; user-select: none; }
+        body { background: var(--bg); color: white; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* SCREENS */
+        .screen { display: none; width: 100%; height: 100%; position: absolute; top:0; left:0; flex-direction: column; align-items: center; justify-content: center; z-index: 10; background: var(--bg); }
+        .active { display: flex !important; }
+
+        /* INPUTS & BUTTONS (Battle War Style) */
+        input { padding: 12px; border-radius: 8px; border: 1px solid #333; background: #222; color: white; margin: 5px; width: 80%; max-width: 300px; text-align: center; font-size: 16px; outline: none; }
+        input:focus { border-color: var(--gold); }
+        
+        .btn { padding: 12px 25px; border-radius: 25px; border: none; font-weight: bold; margin: 10px; cursor: pointer; font-size: 16px; transition: 0.2s; }
+        .btn:active { transform: scale(0.95); }
+        .btn-gold { background: var(--gold); color: black; box-shadow: 0 0 10px rgba(255, 215, 0, 0.3); }
+        .btn-gray { background: #333; color: #ccc; }
+        .btn-red { background: var(--red); color: white; }
+        .btn-blue { background: #3b82f6; color: white; }
+        
+        .hidden { display: none !important; }
+
+        /* MENU SCREEN */
+        .title { font-size: 50px; color: var(--gold); margin-bottom: 20px; text-shadow: 0 0 10px rgba(255,215,0,0.5); }
+        
+        /* LOBBY SCREEN */
+        .lobby-box { width: 90%; max-width: 500px; background: #151515; padding: 20px; border-radius: 15px; border: 1px solid #333; max-height: 90vh; display: flex; flex-direction: column; }
+        .lobby-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
+        
+        /* Color Picker */
+        .color-pal { display: flex; justify-content: center; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; }
+        .c-dot { width: 30px; height: 30px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: 0.2s; }
+        .c-dot.selected { border-color: white; transform: scale(1.1); box-shadow: 0 0 8px white; }
+        .c-dot.taken { opacity: 0.2; pointer-events: none; }
+
+        /* Player List */
+        .p-list { flex: 1; overflow-y: auto; margin-bottom: 15px; }
+        .p-item { background: #222; margin-bottom: 8px; padding: 10px 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 5px solid #555; }
+        .p-status { font-size: 12px; padding: 3px 8px; border-radius: 4px; background: #333; }
+        .p-status.ready { background: #2ecc71; color: black; }
+
+        /* CHAT (Game Screen) */
+        #top-bar { position:absolute; top:0; left:0; width:100%; height: 100px; background: rgba(0,0,0,0.8); z-index: 5; padding: 5px; display: flex; flex-direction: column; pointer-events: none; }
+        #chat-box { flex: 1; overflow-y: auto; font-size: 12px; text-shadow: 1px 1px 0 #000; pointer-events: auto; }
+        .chat-inp-row { display: flex; pointer-events: auto; }
+        #chat-in { flex:1; margin:0; border-radius: 4px 0 0 4px; padding:5px; font-size:12px; }
+        .btn-chat { border-radius: 0 4px 4px 0; margin:0; padding:5px 15px; font-size:12px; }
+
+        /* GAME AREA */
+        #game-screen { background: radial-gradient(circle, #222, #000); }
+        .opponents { position: absolute; top: 110px; width: 100%; display: flex; gap: 5px; overflow-x: auto; padding: 5px; justify-content: center; }
+        .opp-card { min-width: 80px; background: #252525; padding: 8px; border-radius: 8px; border-top: 3px solid #555; text-align: center; font-size: 12px; position: relative; }
+        .opp-card.turn { box-shadow: 0 0 10px var(--gold); border-color: var(--gold); }
+        .opp-card.dead { opacity: 0.4; filter: grayscale(1); }
+        
+        /* CENTER LOGS & POPUP */
+        .center-area { margin-top: 200px; text-align: center; width: 90%; max-width: 400px; }
+        #game-logs { height: 60px; overflow-y: auto; font-size: 13px; color: #aaa; margin-bottom: 10px; text-align: center; }
+        #game-logs div { margin-bottom: 2px; }
+        
+        /* POPUPS */
+        .popup { background: rgba(0,0,0,0.9); border: 1px solid var(--gold); padding: 15px; border-radius: 10px; width: 100%; margin-bottom: 10px; animation: popUp 0.3s; }
+        @keyframes popUp { from{transform:scale(0.8);opacity:0;} to{transform:scale(1);opacity:1;} }
+        .timer-line { height: 3px; background: #333; margin: 10px 0; border-radius: 2px; overflow: hidden; }
+        .timer-fill { height: 100%; background: var(--gold); width: 100%; transition: width 8s linear; }
+
+        /* DASHBOARD (Bottom) */
+        #dashboard { position: absolute; bottom: 0; width: 100%; background: #1a1a1a; padding: 15px; border-top: 2px solid #333; border-radius: 20px 20px 0 0; }
+        .dash-head { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: bold; font-size: 18px; }
+        .my-cards { display: flex; justify-content: center; gap: 10px; margin-bottom: 15px; }
+        .card { width: 70px; height: 100px; background: linear-gradient(135deg, #eee, #ccc); color: black; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.5); position: relative; }
+        .card.hidden-card { background: #333; color: var(--gold); border: 1px solid var(--gold); }
+        
+        .actions-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+        .act-btn { padding: 15px 5px; font-size: 11px; background: #333; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .act-btn:disabled { opacity: 0.3; pointer-events: none; }
+        .act-btn.atk { background: #5a2a2a; }
+        .act-btn.ult { grid-column: span 4; background: var(--gold); color: black; font-weight: bold; font-size: 14px; }
+
+        /* MODAL */
+        #card-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; display: flex; justify-content: center; align-items: center; }
+        .modal-box { background: #222; border: 1px solid var(--gold); padding: 20px; border-radius: 10px; text-align: center; width: 80%; }
+        .modal-btn { display: block; width: 100%; padding: 15px; margin: 5px 0; background: #eee; border:none; border-radius: 5px; font-weight: bold; font-size: 16px; }
+
+        .msg-overlay { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px; z-index: 50; text-align: center; }
+    </style>
 </head>
 <body>
 
-    <div id="top-bar">
-        <div id="chat-box"></div>
-        <div style="display:flex; width:100%;">
-            <input type="text" id="chat-in" placeholder="พิมพ์แชท..." onkeydown="if(event.key==='Enter')sendChat()">
-            <button onclick="sendChat()" class="btn-chat">ส่ง</button>
-        </div>
-    </div>
-
-    <div id="menu-screen" class="screen active">
-        <div class="panel">
-            <h1>COUP <span class="gold">TH</span></h1>
-            <input type="text" id="username" placeholder="ชื่อเล่น">
-            <input type="text" id="room-id" placeholder="รหัสห้อง (Room ID)">
+    <div id="menuScreen" class="screen active">
+        <h1 class="title">COUP</h1>
+        <input type="text" id="pName" placeholder="ชื่อตัวละคร" maxlength="12">
+        <input type="text" id="customCode" placeholder="รหัสห้อง (เว้นว่างเพื่อสร้างใหม่)" style="border-color: var(--gold);">
+        
+        <div style="margin-top:20px;">
             <button class="btn btn-gold" onclick="createRoom()">สร้างห้อง</button>
             <button class="btn btn-gray" onclick="joinRoom()">เข้าร่วม</button>
         </div>
+        <div id="err-msg" style="color:var(--red); margin-top:10px;"></div>
     </div>
 
-    <div id="lobby-screen" class="screen">
-        <div class="panel">
-            <h2>ห้อง: <span id="lobby-rid"></span></h2>
-            <div id="player-list"></div>
-            <div style="margin-top:20px;">
-                <button id="ready-btn" class="btn btn-gray" onclick="toggleReady()">พร้อม</button>
-                <button id="start-btn" class="btn btn-green hidden" onclick="startGame()">เริ่มเกม</button>
+    <div id="lobbyScreen" class="screen">
+        <div class="lobby-box">
+            <div class="lobby-header">
+                <h2 id="room-code">ROOM: ????</h2>
+                <button class="btn btn-gray" style="padding:5px 10px; font-size:12px; margin:0;" onclick="location.reload()">ออก</button>
             </div>
+            
+            <div style="text-align: center; margin-bottom: 5px; font-size: 14px; color:#aaa;">เลือกสีของคุณ</div>
+            <div id="color-pal" class="color-pal"></div>
+
+            <div id="player-list" class="p-list"></div>
+
+            <button id="ready-btn" class="btn btn-gray" onclick="toggleReady()">พร้อม</button>
+            <button id="start-btn" class="btn btn-gold hidden" onclick="reqStart()">เริ่มเกม</button>
         </div>
     </div>
 
-    <div id="game-screen" class="screen">
-        
-        <div id="opponents-row"></div>
+    <div id="gameScreen" class="screen">
+        <div id="top-bar">
+            <div id="chat-box"></div>
+            <div class="chat-inp-row">
+                <input type="text" id="chat-in" placeholder="แชท..." onkeydown="if(event.key==='Enter')sendChat()">
+                <button onclick="sendChat()" class="btn btn-chat btn-gold">ส่ง</button>
+            </div>
+        </div>
+
+        <div id="opponents-row" class="opponents"></div>
 
         <div class="center-area">
             <div id="game-logs"></div>
             
-            <div id="reaction-popup" class="hidden">
-                <h3 class="gold" id="react-title">Action!</h3>
-                <p id="react-desc">กำลังจะ...</p>
-                <div class="timer-bar"><div id="timer-fill"></div></div>
-                <div class="react-btns">
-                    <button id="btn-challenge" class="btn btn-red" onclick="sendReact('challenge')">จับโกหก</button>
-                    <button id="btn-block" class="btn btn-blue" onclick="sendReact('block')">ป้องกัน</button>
-                    <button id="btn-contessa" class="btn btn-blue hidden" onclick="sendReact('block_assassin')">กันด้วย Contessa</button>
-                    <button class="btn btn-gray" onclick="hideReaction()">ผ่าน</button>
+            <div id="reaction-popup" class="popup hidden">
+                <h3 style="color:var(--gold)" id="react-title">Action!</h3>
+                <p id="react-desc">...</p>
+                <div class="timer-line"><div id="timer-fill" class="timer-fill"></div></div>
+                <div style="display:flex; justify-content:center; gap:5px;">
+                    <button class="btn-red" style="padding:5px 10px; border:none; border-radius:4px;" onclick="sendReact('challenge')">จับโกหก</button>
+                    <button id="btn-block" class="btn-blue" style="padding:5px 10px; border:none; border-radius:4px;" onclick="sendReact('block')">ป้องกัน</button>
+                    <button id="btn-contessa" class="btn-blue hidden" style="padding:5px 10px; border:none; border-radius:4px;" onclick="sendReact('block_assassin')">ใช้ Contessa</button>
+                    <button class="btn-gray" style="padding:5px 10px; border:none; border-radius:4px;" onclick="hideReaction()">ผ่าน</button>
                 </div>
             </div>
             
-            <div id="block-challenge-popup" class="hidden">
-                 <h3 class="red">มีการป้องกัน!</h3>
+            <div id="block-challenge-popup" class="popup hidden">
+                 <h3 style="color:var(--red)">มีการป้องกัน!</h3>
                  <p>คุณจะจับโกหกการ Block นี้หรือไม่?</p>
-                 <button class="btn btn-red" onclick="sendReact('challenge_block')">จับโกหกคนกัน</button>
-                 <button class="btn btn-gray" onclick="hideBlockReaction()">ยอมรับการกัน</button>
+                 <div style="margin-top:10px;">
+                    <button class="btn-red" style="padding:5px 10px; border:none; border-radius:4px;" onclick="sendReact('challenge_block')">จับโกหก</button>
+                    <button class="btn-gray" style="padding:5px 10px; border:none; border-radius:4px;" onclick="hideBlockReaction()">ยอมรับ</button>
+                 </div>
             </div>
         </div>
 
+        <div id="select-overlay" class="msg-overlay hidden">แตะที่ผู้เล่นเพื่อเลือกเป้าหมาย...</div>
+
         <div id="dashboard">
-            <div class="dash-header">
+            <div class="dash-head">
                 <span id="my-name">Me</span>
-                <span>💰 <span id="my-coins" class="gold">0</span></span>
+                <span>💰 <span id="my-coins" style="color:var(--gold)">0</span></span>
             </div>
             
-            <div style="text-align:center; font-size:10px; color:#aaa; margin-bottom:5px;">(แตะการ์ดเพื่อซ่อน/โชว์)</div>
-            <div id="my-hand"></div>
+            <div id="my-hand" class="my-cards"></div>
 
-            <div id="msg-overlay" class="hidden">เลือกเป้าหมาย...</div>
-
-            <div id="actions-grid">
-                <button class="act-btn" onclick="doAction('Income')">หยิบ 1 เหรียญ</button>
-                <button class="act-btn" onclick="doAction('Foreign Aid')">ขอเงิน (2)</button>
-                <button class="act-btn" onclick="doAction('Tax')">เก็บภาษี (3)</button>
-                <button class="act-btn" onclick="doAction('Exchange')">เปลี่ยนการ์ด</button>
+            <div class="actions-grid">
+                <button class="act-btn" onclick="doAction('Income')">Income (1)</button>
+                <button class="act-btn" onclick="doAction('Foreign Aid')">Aid (2)</button>
+                <button class="act-btn" onclick="doAction('Tax')">Tax (3)</button>
+                <button class="act-btn" onclick="doAction('Exchange')">Change Cards</button>
                 
-                <button class="act-btn atk" onclick="selectMode('Steal')">ขโมย (2)</button>
-                <button class="act-btn atk" onclick="selectMode('Assassinate')">ลอบสังหาร (3)</button>
+                <button class="act-btn atk" onclick="selectMode('Steal')">Steal (2)</button>
+                <button class="act-btn atk" onclick="selectMode('Assassinate')">Kill (3)</button>
                 
-                <button class="act-btn ult" onclick="selectMode('Coup')">รัฐประหาร (7)</button>
+                <button class="act-btn ult" onclick="selectMode('Coup')">COUP (7)</button>
             </div>
         </div>
     </div>
 
     <div id="card-modal" class="hidden">
         <div class="modal-box">
-            <h3 id="modal-title">เลือกการ์ด</h3>
+            <h3 id="modal-title" style="margin-bottom:15px;">เลือกการ์ด</h3>
             <div id="modal-cards"></div>
         </div>
     </div>

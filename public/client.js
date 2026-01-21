@@ -1,69 +1,94 @@
 const socket = io();
 let roomId = null;
 let myId = null;
-let selectionMode = null; // เก็บท่าที่กดรอเลือกเป้าหมาย
+let selectionMode = null; 
 
-// Navigation
-function showScreen(id) {
+// --- SCREEN NAV ---
+function toScr(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById(id).classList.add('active');
 }
 
-// Menu & Lobby
+// --- LOBBY LOGIC ---
 function createRoom() {
-    const u = document.getElementById('username').value;
-    const r = document.getElementById('room-id').value;
-    if(u && r) socket.emit('createRoom', { roomId: r, username: u });
+    const name = document.getElementById('pName').value || 'Host';
+    const code = document.getElementById('customCode').value;
+    socket.emit('create_room', { name, customId: code });
 }
 function joinRoom() {
-    const u = document.getElementById('username').value;
-    const r = document.getElementById('room-id').value;
-    if(u && r) socket.emit('joinRoom', { roomId: r, username: u });
+    const name = document.getElementById('pName').value || 'Player';
+    const code = document.getElementById('customCode').value;
+    if(code) socket.emit('join_room', { roomId: code, name });
+    else alert("กรุณาใส่รหัสห้อง");
 }
-function toggleReady() { socket.emit('toggleReady', roomId); }
-function startGame() { socket.emit('startGame', roomId); }
+function toggleReady() { socket.emit('toggle_ready', roomId); }
+function reqStart() { socket.emit('start_game_request', roomId); }
 
-socket.on('updateLobby', players => {
-    document.getElementById('lobby-rid').innerText = roomId;
+socket.on('join_success', d => {
+    roomId = d.roomId;
+    toScr('lobbyScreen');
+    document.getElementById('room-code').innerText = `ROOM: ${roomId}`;
+});
+socket.on('error_msg', m => {
+    document.getElementById('err-msg').innerText = m;
+    setTimeout(()=>document.getElementById('err-msg').innerText='', 3000);
+});
+
+socket.on('update_lobby', d => {
+    // 1. Render Colors
+    const pal = document.getElementById('color-pal');
+    pal.innerHTML = '';
+    const me = d.players.find(p => p.id === socket.id);
+    if(me) myId = socket.id;
+
+    d.colors.forEach(c => {
+        const dot = document.createElement('div');
+        dot.className = `c-dot ${me && me.color === c ? 'selected' : ''}`;
+        if(d.players.some(p => p.color === c && p.id !== socket.id)) dot.classList.add('taken');
+        dot.style.background = c;
+        dot.onclick = () => socket.emit('select_color', { roomId, color: c });
+        pal.appendChild(dot);
+    });
+
+    // 2. Render List
     const list = document.getElementById('player-list');
-    list.innerHTML = players.map(p => `
-        <div class="slot ${p.isReady?'ready':''}" style="border-left: 5px solid ${p.color}">
-            <b>${p.name}</b> ${p.isHost?'👑':''}
-            <span>${p.isReady ? 'พร้อม' : '...'}</span>
+    list.innerHTML = d.players.map(p => `
+        <div class="p-item" style="border-left-color: ${p.color}">
+            <b>${p.name} ${p.isHost ? '👑' : ''}</b>
+            <span class="p-status ${p.isReady ? 'ready' : ''}">${p.isReady ? 'พร้อม' : 'รอ...'}</span>
         </div>
     `).join('');
 
-    const me = players.find(p=>p.id===socket.id);
+    // 3. Button State
     if(me) {
         const rBtn = document.getElementById('ready-btn');
         rBtn.innerText = me.isReady ? "ยกเลิก" : "พร้อม";
         rBtn.className = me.isReady ? "btn btn-gold" : "btn btn-gray";
         
         if(me.isHost) {
-            const allReady = players.length >= 2 && players.every(p=>p.isReady);
             const sBtn = document.getElementById('start-btn');
             sBtn.classList.remove('hidden');
+            const allReady = d.players.length >= 2 && d.players.every(p => p.isReady);
             sBtn.disabled = !allReady;
+            sBtn.style.opacity = allReady ? 1 : 0.5;
         }
     }
 });
 
-socket.on('roomJoined', d => { roomId=d.roomId; myId=socket.id; showScreen('lobby-screen'); });
-socket.on('gameStarted', () => showScreen('game-screen'));
-socket.on('error', m => alert(m));
+socket.on('start_game', () => toScr('gameScreen'));
 
-// Game Logic
+// --- GAME LOGIC (COUP) ---
 socket.on('updateGame', d => {
     if(d.logs) addLog(d.logs);
 
     // Render Opponents
     const row = document.getElementById('opponents-row');
     row.innerHTML = d.players.filter(p=>p.id!==myId).map(p => `
-        <div class="opp-card ${p.id===d.turnId?'active':''} ${!p.isAlive?'dead':''}" 
-             onclick="clickPlayer('${p.id}')" style="border-top:3px solid ${p.color}">
-            <div class="opp-name">${p.name}</div>
+        <div class="opp-card ${p.id===d.turnId?'turn':''} ${!p.isAlive?'dead':''}" 
+             onclick="clickPlayer('${p.id}')" style="border-top-color:${p.color}">
+            <div style="font-weight:bold; margin-bottom:5px;">${p.name}</div>
             <div>💰${p.coins} 🃏${p.cardsCount}</div>
-            <div class="graveyard">${p.lostCards.map(c=>`<span class="dead-c">${c[0]}</span>`).join('')}</div>
+            <div style="margin-top:5px; font-size:10px;">${p.lostCards.map(c=>`[${c}]`).join(' ')}</div>
         </div>
     `).join('');
 
@@ -74,15 +99,12 @@ socket.on('updateGame', d => {
         document.getElementById('my-name').innerText = me.name;
         
         const hand = document.getElementById('my-hand');
-        // Render Hand (Only updates content to keep toggle state if logic added, but here simple re-render)
         hand.innerHTML = me.cards.map(c => `
-            <div class="card" onclick="this.classList.toggle('flipped')">
-                <div class="face">${c}</div>
-                <div class="back">COUP</div>
+            <div class="card" onclick="this.classList.toggle('hidden-card')">
+                <span>${c}</span>
             </div>
         `).join('');
 
-        // Action Buttons
         const isTurn = (d.turnId === myId) && me.isAlive;
         document.querySelectorAll('.act-btn').forEach(b => b.disabled = !isTurn);
         document.getElementById('dashboard').style.borderColor = isTurn ? 'var(--gold)' : '#333';
@@ -93,92 +115,71 @@ socket.on('updateGame', d => {
 function doAction(act) { socket.emit('action', { roomId, action: act, targetId: null }); }
 function selectMode(act) {
     selectionMode = act;
-    document.getElementById('msg-overlay').classList.remove('hidden');
+    document.getElementById('select-overlay').classList.remove('hidden');
 }
 function clickPlayer(targetId) {
     if(selectionMode) {
         socket.emit('action', { roomId, action: selectionMode, targetId });
         selectionMode = null;
-        document.getElementById('msg-overlay').classList.add('hidden');
+        document.getElementById('select-overlay').classList.add('hidden');
     }
 }
 
 // Reactions
 socket.on('actionBroadcast', d => {
+    if(d.sourceId === myId || d.action === 'Income' || d.action === 'Coup') return;
+
     const ui = document.getElementById('reaction-popup');
     const title = document.getElementById('react-title');
     const desc = document.getElementById('react-desc');
     const btnBlock = document.getElementById('btn-block');
     const btnContessa = document.getElementById('btn-contessa');
 
-    // Reset UI
     ui.classList.remove('hidden');
     btnBlock.style.display = 'inline-block';
     btnContessa.classList.add('hidden');
-    
     title.innerText = d.actionNameTH;
     desc.innerText = `${d.sourceName} กำลังใช้ท่านี้...`;
 
-    // Filter Buttons
-    if(d.sourceId === myId) {
-        ui.classList.add('hidden'); // คนทำท่าไม่ต้องเห็นปุ่ม Reaction
-        return;
-    }
-
-    if(d.action === 'Income' || d.action === 'Coup') {
-        ui.classList.add('hidden'); // ท่าที่ขัดไม่ได้
-        return;
-    }
-
     if(d.action === 'Foreign Aid') btnBlock.innerText = "กัน (Duke)";
-    if(d.action === 'Steal') btnBlock.innerText = "กัน (Cpt/Amb)";
-    
+    if(d.action === 'Steal') btnBlock.innerText = "กัน (Captain/Amb)";
     if(d.action === 'Assassinate') {
-        btnBlock.style.display = 'none'; // ใช้ปุ่ม Contessa แทน
-        if(d.targetId === myId) {
-            btnContessa.classList.remove('hidden');
-        }
+        btnBlock.style.display = 'none';
+        if(d.targetId === myId) btnContessa.classList.remove('hidden');
     }
-    if(d.action === 'Tax') btnBlock.style.display = 'none'; // Tax กันไม่ได้ (Challenge ได้อย่างเดียว)
+    if(d.action === 'Tax') btnBlock.style.display = 'none';
 
-    // Animation
-    document.getElementById('timer-fill').style.width = '100%';
-    setTimeout(() => document.getElementById('timer-fill').style.width = '0%', 50);
-    setTimeout(() => hideReaction(), 5000);
+    // Animation bar reset
+    const fill = document.getElementById('timer-fill');
+    fill.style.transition = 'none'; fill.style.width = '100%';
+    setTimeout(() => { fill.style.transition = 'width 8s linear'; fill.style.width = '0%'; }, 50);
+
+    setTimeout(() => hideReaction(), 8000);
 });
 
 socket.on('blockBroadcast', d => {
-    // โชว์ UI ให้คนอื่นตัดสินใจว่าจะ Challenge Block ไหม
-    const ui = document.getElementById('block-challenge-popup');
-    ui.classList.remove('hidden');
-    // ซ่อน Reaction ปกติ
     document.getElementById('reaction-popup').classList.add('hidden');
-    
-    setTimeout(() => ui.classList.add('hidden'), 5000);
+    document.getElementById('block-challenge-popup').classList.remove('hidden');
+    setTimeout(() => hideBlockReaction(), 5000);
 });
 
-function sendReact(type) {
-    socket.emit('react', { roomId, type });
-    hideReaction();
-}
+function sendReact(type) { socket.emit('react', { roomId, type }); hideReaction(); hideBlockReaction(); }
 function hideReaction() { document.getElementById('reaction-popup').classList.add('hidden'); }
 function hideBlockReaction() { document.getElementById('block-challenge-popup').classList.add('hidden'); }
 
-// Modal (Proof / Discard)
+// Modals
 socket.on('requestProof', d => showModal(d.message, c => socket.emit('provideProof', {roomId, cardName:c})));
 socket.on('forceLoseCard', d => showModal(d.message, c => socket.emit('discardCard', {roomId, cardName:c})));
 socket.on('exchangeSelect', d => {
-    // Exchange ต้องทิ้ง 2 ใบ (ในที่นี้ทำแบบทิ้งทีละใบเพื่อความง่ายของโค้ด)
-    showModal("เลือกการ์ดที่จะทิ้งใบที่ 1 (จาก Exchange)", c1 => {
+    showModal("เลือกการ์ดทิ้งใบที่ 1", c1 => {
         socket.emit('discardCard', {roomId, cardName:c1});
         setTimeout(() => {
-             // ใบที่ 2 จะถูก Trigger จาก Server เองถ้ายังมีการ์ดเกิน
-             showModal("เลือกการ์ดที่จะทิ้งใบที่ 2", c2 => {
+             showModal("เลือกการ์ดทิ้งใบที่ 2", c2 => {
                  socket.emit('discardCard', {roomId, cardName:c2});
-                 socket.emit('finishExchange', {roomId}); // บอก Server ว่าจบแล้ว
+                 socket.emit('finishExchange', {roomId});
              });
-        }, 500);
-    }, d.cards); // ส่ง cards ทั้งหมดไปให้เลือก
+        }, 300);
+    }, d.cards);
 });
 
 function showModal(msg, callback, overrideCards = null) {
@@ -187,16 +188,12 @@ function showModal(msg, callback, overrideCards = null) {
     document.getElementById('modal-title').innerText = msg;
     const con = document.getElementById('modal-cards');
     
-    // ดึงการ์ดจาก UI หรือจากข้อมูลที่ส่งมา
-    let cards = [];
-    if(overrideCards) {
-        cards = overrideCards;
-    } else {
-        const els = document.querySelectorAll('#my-hand .face');
-        els.forEach(e => cards.push(e.innerText));
+    let cards = overrideCards || [];
+    if(!overrideCards) {
+        document.querySelectorAll('#my-hand .card span').forEach(e => cards.push(e.innerText));
     }
 
-    con.innerHTML = cards.map(c => `<button class="m-card">${c}</button>`).join('');
+    con.innerHTML = cards.map(c => `<button class="modal-btn">${c}</button>`).join('');
     con.querySelectorAll('button').forEach(b => {
         b.onclick = () => {
             m.classList.add('hidden');
@@ -205,18 +202,17 @@ function showModal(msg, callback, overrideCards = null) {
     });
 }
 
-// Chat & Logs
+// Chat
 function sendChat() {
     const i = document.getElementById('chat-in');
     if(i.value) { socket.emit('sendChat', {roomId, msg:i.value}); i.value=''; }
 }
 socket.on('chatMessage', d => {
     const b = document.getElementById('chat-box');
-    b.innerHTML += `<div><b>${d.name}:</b> ${d.msg}</div>`;
+    b.innerHTML += `<div style="color:${d.color}"><b>${d.name}:</b> ${d.msg}</div>`;
     b.scrollTop = b.scrollHeight;
 });
 function addLog(msg) {
     const b = document.getElementById('game-logs');
-    b.innerHTML += `<div>${msg}</div>`;
-    b.scrollTop = b.scrollHeight;
+    b.innerHTML = `<div>${msg}</div>` + b.innerHTML; 
 }

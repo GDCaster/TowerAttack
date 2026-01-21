@@ -1,7 +1,7 @@
 {
-  "name": "coup-game",
+  "name": "coup-premium-lobby",
   "version": "1.0.0",
-  "description": "Coup Game Realtime Node.js",
+  "description": "Coup Game with Battle War Lobby System",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
