@@ -3,194 +3,530 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Coup Online: Gold Edition</title>
-    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
+    <title>Battle War: Sandbox Update</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
     <style>
-        :root { --bg: #0a0a0a; --gold: #FFD700; --red: #ff4757; --gray: #333; }
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Kanit', sans-serif; user-select: none; }
-        body { background: var(--bg); color: white; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        :root { --bg: #0a0a0a; --gold: #FFD700; --red: #ff4757; }
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { background: var(--bg); color: white; font-family: 'Kanit', sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
+        
+        @keyframes walkAnim { 0% { transform: translate(-50%,-50%) rotate(-5deg); } 50% { transform: translate(-50%,-50%) rotate(5deg); } 100% { transform: translate(-50%,-50%) rotate(-5deg); } }
+        @keyframes atkAnim { 0% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-50%) scale(1.4); } 100% { transform: translate(-50%,-50%) scale(1); } }
+        @keyframes expand { 0% { transform: translate(-50%,-50%) scale(0); opacity: 0.8; } 100% { transform: translate(-50%,-50%) scale(2); opacity: 0; } }
+        @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
+        @keyframes spinScope { 0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); } 50% { transform: translate(-50%, -50%) rotate(180deg) scale(0.8); } 100% { transform: translate(-50%, -50%) rotate(360deg) scale(1); } }
+        @keyframes stunnedAnim { 0% { filter: brightness(1) sepia(0); } 50% { filter: brightness(0.5) sepia(1) hue-rotate(200deg); } 100% { filter: brightness(1) sepia(0); } }
+        @keyframes shieldPulse { 0% { box-shadow: 0 0 0px #fff; } 50% { box-shadow: 0 0 15px #fff; } 100% { box-shadow: 0 0 0px #fff; } }
 
-        /* SCREENS */
-        .screen { display: none; width: 100%; height: 100%; position: absolute; top:0; left:0; flex-direction: column; align-items: center; justify-content: center; z-index: 10; background: var(--bg); }
+        .screen { display: none; width: 100%; height: 100%; position: absolute; z-index: 50; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; }
         .active { display: flex !important; }
-
-        /* INPUTS & BUTTONS (Battle War Style) */
-        input { padding: 12px; border-radius: 8px; border: 1px solid #333; background: #222; color: white; margin: 5px; width: 80%; max-width: 300px; text-align: center; font-size: 16px; outline: none; }
-        input:focus { border-color: var(--gold); }
         
-        .btn { padding: 12px 25px; border-radius: 25px; border: none; font-weight: bold; margin: 10px; cursor: pointer; font-size: 16px; transition: 0.2s; }
-        .btn:active { transform: scale(0.95); }
-        .btn-gold { background: var(--gold); color: black; box-shadow: 0 0 10px rgba(255, 215, 0, 0.3); }
+        input, select { padding: 12px; border-radius: 8px; border: 1px solid #333; background: #222; color: white; margin: 5px; width: 80%; max-width: 300px; text-align: center; font-size: 16px; }
+        .btn { padding: 12px 25px; border-radius: 25px; border: none; font-weight: bold; margin: 10px; cursor: pointer; font-size: 16px; }
+        .btn-gold { background: var(--gold); color: black; }
         .btn-gray { background: #333; color: #ccc; }
-        .btn-red { background: var(--red); color: white; }
-        .btn-blue { background: #3b82f6; color: white; }
+        .btn-blue { background: #3b82f6; color: white; box-shadow: 0 0 10px #3b82f6; }
+        .btn-red { background: #ff4757; color: white; box-shadow: 0 0 10px #ff4757; }
+
+        .lobby-box { width: 90%; max-width: 600px; background: #151515; padding: 20px; border-radius: 15px; border: 1px solid #333; max-height: 90vh; overflow-y: auto; }
+        .team-con { display: flex; gap: 10px; margin-top: 15px; min-height: 150px; }
+        .team-col { flex: 1; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 10px; }
+        .p-card { background: #333; padding: 8px; border-radius: 5px; margin-bottom: 5px; display: flex; justify-content: space-between; font-size: 14px; border-left: 4px solid white; }
+        .color-dot { width: 30px; height: 30px; border-radius: 50%; display: inline-block; margin: 3px; cursor: pointer; border: 2px solid transparent; }
+        .color-dot.selected { border-color: white; transform: scale(1.1); }
+        .color-dot.disabled { opacity: 0.2; pointer-events: none; }
         
-        .hidden { display: none !important; }
+        #autoTimer { color: #ff4757; font-size: 18px; font-weight: bold; margin-bottom: 5px; display: none; text-align: center; }
 
-        /* MENU SCREEN */
-        .title { font-size: 50px; color: var(--gold); margin-bottom: 20px; text-shadow: 0 0 10px rgba(255,215,0,0.5); }
+        #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 1; background: #111; touch-action: none; }
+        #world { 
+            position: absolute; top: 0; left: 0; width: 1600px; height: 900px; 
+            background-color: #0f0f0f;
+            background-image: linear-gradient(#222 1px, transparent 1px), linear-gradient(90deg, #222 1px, transparent 1px);
+            background-size: 100px 100px; border: 2px solid #444;
+            transform-origin: 0 0; will-change: transform;
+        }
         
-        /* LOBBY SCREEN */
-        .lobby-box { width: 90%; max-width: 500px; background: #151515; padding: 20px; border-radius: 15px; border: 1px solid #333; max-height: 90vh; display: flex; flex-direction: column; }
-        .lobby-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
+        .base { position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 5; text-align: center; font-size: 50px; }
+        .team-name { position: absolute; top: 40%; transform: translate(-50%, -50%); color: #aaa; font-size: 20px; font-weight: bold; white-space: nowrap; z-index: 4; text-shadow: 1px 1px 0 #000; }
         
-        /* Color Picker */
-        .color-pal { display: flex; justify-content: center; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; }
-        .c-dot { width: 30px; height: 30px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: 0.2s; }
-        .c-dot.selected { border-color: white; transform: scale(1.1); box-shadow: 0 0 8px white; }
-        .c-dot.taken { opacity: 0.2; pointer-events: none; }
+        .unit { position: absolute; width: 30px; height: 30px; border-radius: 50%; transform: translate(-50%, -50%); z-index: 10; display: flex; justify-content: center; align-items: center; border: 2px solid white; font-size: 16px; transition: left 0.15s linear, top 0.15s linear; }
+        .unit.walk { animation: walkAnim 0.5s infinite linear; }
+        .unit.attack { animation: atkAnim 0.2s linear; }
+        .unit.stun { animation: stunnedAnim 1s infinite; }
+        .unit.stun::after { content: '💫'; position: absolute; top: -15px; font-size: 14px; }
+        .unit.shielded { border: 2px solid #fff; animation: shieldPulse 0.5s infinite; }
+        .u-name { display: none; }
 
-        /* Player List */
-        .p-list { flex: 1; overflow-y: auto; margin-bottom: 15px; }
-        .p-item { background: #222; margin-bottom: 8px; padding: 10px 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 5px solid #555; }
-        .p-status { font-size: 12px; padding: 3px 8px; border-radius: 4px; background: #333; }
-        .p-status.ready { background: #2ecc71; color: black; }
-
-        /* CHAT (Game Screen) */
-        #top-bar { position:absolute; top:0; left:0; width:100%; height: 100px; background: rgba(0,0,0,0.8); z-index: 5; padding: 5px; display: flex; flex-direction: column; pointer-events: none; }
-        #chat-box { flex: 1; overflow-y: auto; font-size: 12px; text-shadow: 1px 1px 0 #000; pointer-events: auto; }
-        .chat-inp-row { display: flex; pointer-events: auto; }
-        #chat-in { flex:1; margin:0; border-radius: 4px 0 0 4px; padding:5px; font-size:12px; }
-        .btn-chat { border-radius: 0 4px 4px 0; margin:0; padding:5px 15px; font-size:12px; }
-
-        /* GAME AREA */
-        #game-screen { background: radial-gradient(circle, #222, #000); }
-        .opponents { position: absolute; top: 110px; width: 100%; display: flex; gap: 5px; overflow-x: auto; padding: 5px; justify-content: center; }
-        .opp-card { min-width: 80px; background: #252525; padding: 8px; border-radius: 8px; border-top: 3px solid #555; text-align: center; font-size: 12px; position: relative; }
-        .opp-card.turn { box-shadow: 0 0 10px var(--gold); border-color: var(--gold); }
-        .opp-card.dead { opacity: 0.4; filter: grayscale(1); }
+        .hp-bar { width: 80px; height: 6px; background: #333; margin: 0 auto; border-radius: 3px; overflow: hidden; }
+        .hp-val { height: 100%; width: 100%; transition: width 0.2s; }
         
-        /* CENTER LOGS & POPUP */
-        .center-area { margin-top: 200px; text-align: center; width: 90%; max-width: 400px; }
-        #game-logs { height: 60px; overflow-y: auto; font-size: 13px; color: #aaa; margin-bottom: 10px; text-align: center; }
-        #game-logs div { margin-bottom: 2px; }
+        .proj { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: white; z-index: 12; transform: translate(-50%,-50%); border: 2px solid black; transition: left 0.15s linear, top 0.15s linear; }
+        .proj.mage { background: #a29bfe; box-shadow: 0 0 8px #a29bfe; }
+        .proj.cannon { background: #333; width: 16px; height: 16px; }
+        .proj.sniper_bullet { width: 6px; height: 6px; background: gold; box-shadow: 0 0 5px gold; border:none; }
         
-        /* POPUPS */
-        .popup { background: rgba(0,0,0,0.9); border: 1px solid var(--gold); padding: 15px; border-radius: 10px; width: 100%; margin-bottom: 10px; animation: popUp 0.3s; }
-        @keyframes popUp { from{transform:scale(0.8);opacity:0;} to{transform:scale(1);opacity:1;} }
-        .timer-line { height: 3px; background: #333; margin: 10px 0; border-radius: 2px; overflow: hidden; }
-        .timer-fill { height: 100%; background: var(--gold); width: 100%; transition: width 8s linear; }
+        .aoe { position: absolute; border: 2px solid white; background: rgba(255,255,255,0.2); border-radius: 50%; z-index: 11; animation: expand 0.4s forwards; }
+        .aoe.healer { border-color: #2ed573; background: rgba(46, 213, 115, 0.2); }
+        .aoe.impact { border-color: #ffa502; background: rgba(255, 165, 2, 0.3); animation: expand 0.25s forwards; }
+        .aoe.mage_blast { border-color: #a29bfe; background: rgba(162, 155, 254, 0.5); animation: expand 0.5s forwards; }
 
-        /* DASHBOARD (Bottom) */
-        #dashboard { position: absolute; bottom: 0; width: 100%; background: #1a1a1a; padding: 15px; border-top: 2px solid #333; border-radius: 20px 20px 0 0; }
-        .dash-head { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: bold; font-size: 18px; }
-        .my-cards { display: flex; justify-content: center; gap: 10px; margin-bottom: 15px; }
-        .card { width: 70px; height: 100px; background: linear-gradient(135deg, #eee, #ccc); color: black; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.5); position: relative; }
-        .card.hidden-card { background: #333; color: var(--gold); border: 1px solid var(--gold); }
+        .aim-scope { position: absolute; width: 40px; height: 40px; border: 2px solid #ff0000; border-radius: 50%; z-index: 100; transform: translate(-50%, -50%); box-shadow: 0 0 10px red; background: rgba(255, 0, 0, 0.1); pointer-events: none; transition: left 0.15s linear, top 0.15s linear; animation: spinScope 1s infinite linear; }
+        .aim-scope::after, .aim-scope::before { content: ''; position: absolute; background: #ff0000; }
+        .aim-scope::after { top: 50%; left: 0; width: 100%; height: 1px; }
+        .aim-scope::before { top: 0; left: 50%; width: 1px; height: 100%; }
+
+        .dmg { position: absolute; color: #ff4757; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
+        .heal-text { position: absolute; color: #2ed573; font-weight: bold; font-size: 20px; z-index: 20; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; }
+        .block-text { position: absolute; color: #fff; font-weight: bold; font-size: 22px; z-index: 20; text-shadow: 0 0 5px #000; animation: floatUp 1s forwards; pointer-events: none; }
+
+        .hud-bottom { position: absolute; bottom: 220px; right: 10px; width: auto; text-align: right; z-index: 100; pointer-events: none; }
+        .energy { background: rgba(0,0,0,0.8); color: var(--gold); padding: 5px 20px; border-radius: 20px; border: 1px solid var(--gold); font-size: 24px; font-weight: bold; display: inline-block; min-width: 120px; text-align: center; }
         
-        .actions-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
-        .act-btn { padding: 15px 5px; font-size: 11px; background: #333; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        .act-btn:disabled { opacity: 0.3; pointer-events: none; }
-        .act-btn.atk { background: #5a2a2a; }
-        .act-btn.ult { grid-column: span 4; background: var(--gold); color: black; font-weight: bold; font-size: 14px; }
+        .dock { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 100; width: 98%; max-width: 700px; justify-content: center; flex-wrap: wrap; }
+        .card { width: 62px; height: 75px; background: #222; border: 1px solid #444; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: 0.1s; overflow: hidden; flex-shrink: 0; }
+        .card:active { transform: scale(0.95); border-color: var(--gold); }
+        .card.disabled { opacity: 0.4; filter: grayscale(1); }
+        .c-icon { font-size: 22px; line-height: 1; margin-bottom: 2px; }
+        .c-cost { font-size: 10px; color: var(--gold); background: black; padding: 1px 5px; border-radius: 8px; }
+        .c-limit { font-size: 10px; color: #fff; margin-top: 2px; background: rgba(0,0,0,0.5); border-radius:4px; padding:0 2px; }
 
-        /* MODAL */
-        #card-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; display: flex; justify-content: center; align-items: center; }
-        .modal-box { background: #222; border: 1px solid var(--gold); padding: 20px; border-radius: 10px; text-align: center; width: 80%; }
-        .modal-btn { display: block; width: 100%; padding: 15px; margin: 5px 0; background: #eee; border:none; border-radius: 5px; font-weight: bold; font-size: 16px; }
+        .card.upgrade { border-color: #3b82f6; background: #1a202c; }
+        .card.upgrade .c-cost { color: #3b82f6; }
+        .upgrade-lv { position: absolute; top: 2px; right: 2px; font-size: 10px; color: white; font-weight: bold; background: #3b82f6; border-radius: 50%; width: 15px; height: 15px; text-align: center; line-height: 15px; }
 
-        .msg-overlay { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px; z-index: 50; text-align: center; }
+        .cd-overlay { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: rgba(0, 0, 0, 0.7); z-index: 10; pointer-events: none; }
+        .card.cooldown-active { pointer-events: none; }
+        .card.cooldown-active .cd-overlay { height: 100%; transition: none; }
+        .card.cooldown-anim .cd-overlay { height: 0%; transition: height 3s linear; }
+
+        #chatCon { position: absolute; top: 10px; left: 10px; width: 280px; height: 160px; z-index: 100; display: flex; flex-direction: column; pointer-events: none; }
+        #chatBox { flex: 1; overflow-y: auto; padding: 8px; color: white; font-size: 13px; pointer-events: auto; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px 8px 0 0; margin-bottom: 2px; }
+        #chatBox div { text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; }
+        .chat-input-row { display: flex; width: 100%; pointer-events: auto; }
+        #chatInp { flex: 1; margin: 0; background: rgba(0,0,0,0.8); padding: 8px; color: white; border-radius: 0 0 0 8px; border: 1px solid #444; width: auto; max-width: none; }
+        #chatSendBtn { width: 60px; background: var(--gold); border: none; border-radius: 0 0 8px 0; font-weight: bold; color: black; cursor: pointer; }
+        #chatSendBtn:active { background: #e5c100; }
+
+        .loader { width: 50px; height: 50px; border: 5px solid #333; border-top: 5px solid var(--gold); border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* SANDBOX CONTROLS */
+        #sandboxControls { position: absolute; top: 10px; right: 10px; display: none; z-index: 101; text-align: right; }
+        #sideToggleBtn { padding: 10px; margin-bottom: 5px; font-weight: bold; width: 120px; }
+        #exitBtn { padding: 10px; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; width: 120px; }
     </style>
 </head>
 <body>
 
     <div id="menuScreen" class="screen active">
-        <h1 class="title">COUP</h1>
-        <input type="text" id="pName" placeholder="ชื่อตัวละคร" maxlength="12">
-        <input type="text" id="customCode" placeholder="รหัสห้อง (เว้นว่างเพื่อสร้างใหม่)" style="border-color: var(--gold);">
+        <h1 style="color:var(--gold); font-size:40px;">BATTLE WAR</h1>
+        <p style="color:#777; margin-bottom:20px;">Low Data Usage Mode</p>
+        <input type="text" id="pName" placeholder="ชื่อตัวละคร" maxlength="10">
         
-        <div style="margin-top:20px;">
-            <button class="btn btn-gold" onclick="createRoom()">สร้างห้อง</button>
-            <button class="btn btn-gray" onclick="joinRoom()">เข้าร่วม</button>
+        <button class="btn btn-blue" style="width:80%; max-width:300px; padding:15px; font-size:20px;" onclick="startMatchmaking()">🔍 Auto Match (1v1)</button>
+        
+        <div style="width:80%; height:1px; background:#333; margin:15px 0;"></div>
+        
+        <select id="gMode" onchange="toggleBot()">
+            <option value="1v1">Custom 1 vs 1</option>
+            <option value="2v2">Custom 2 vs 2</option>
+            <option value="bot">Play vs Bot</option>
+            <option value="sandbox">Sandbox (Test)</option>
+        </select>
+        <div id="botOpt" style="display:none; width:100%; text-align:center;">
+            <select id="bDiff" style="width:50%;"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select>
         </div>
-        <div id="err-msg" style="color:var(--red); margin-top:10px;"></div>
+        
+        <input type="text" id="customCode" placeholder="ตั้งรหัสห้อง (เว้นว่างเพื่อสุ่ม)" style="border:1px solid var(--gold); color:var(--gold);" maxlength="5">
+        
+        <button class="btn btn-gold" onclick="createRoom()">สร้างห้องเอง</button>
+        <div style="display:flex; gap:5px; width:80%; max-width:300px;">
+            <input type="text" id="rCode" placeholder="Code" style="margin:0;">
+            <button class="btn btn-gray" onclick="joinRoom()" style="margin:0;">Join</button>
+        </div>
+        <div id="msg" style="color:#ff4757; margin-top:10px;"></div>
+    </div>
+
+    <div id="matchScreen" class="screen">
+        <h2 style="color:white;">กำลังค้นหาคู่ต่อสู้...</h2>
+        <div class="loader"></div>
+        <p style="color:#aaa;">กรุณารอสักครู่ ระบบกำลังจับคู่ให้คุณ</p>
+        <button class="btn btn-gray" onclick="cancelMatch()">ยกเลิก</button>
     </div>
 
     <div id="lobbyScreen" class="screen">
         <div class="lobby-box">
-            <div class="lobby-header">
-                <h2 id="room-code">ROOM: ????</h2>
-                <button class="btn btn-gray" style="padding:5px 10px; font-size:12px; margin:0;" onclick="location.reload()">ออก</button>
+            <div style="display:flex; justify-content:space-between;">
+                <h2 id="lTitle">Room</h2>
+                <button class="btn btn-gray" style="padding:5px 10px; font-size:12px;" onclick="location.reload()">ออก</button>
             </div>
-            
-            <div style="text-align: center; margin-bottom: 5px; font-size: 14px; color:#aaa;">เลือกสีของคุณ</div>
-            <div id="color-pal" class="color-pal"></div>
-
-            <div id="player-list" class="p-list"></div>
-
-            <button id="ready-btn" class="btn btn-gray" onclick="toggleReady()">พร้อม</button>
-            <button id="start-btn" class="btn btn-gold hidden" onclick="reqStart()">เริ่มเกม</button>
-        </div>
-    </div>
-
-    <div id="gameScreen" class="screen">
-        <div id="top-bar">
-            <div id="chat-box"></div>
-            <div class="chat-inp-row">
-                <input type="text" id="chat-in" placeholder="แชท..." onkeydown="if(event.key==='Enter')sendChat()">
-                <button onclick="sendChat()" class="btn btn-chat btn-gold">ส่ง</button>
-            </div>
-        </div>
-
-        <div id="opponents-row" class="opponents"></div>
-
-        <div class="center-area">
-            <div id="game-logs"></div>
-            
-            <div id="reaction-popup" class="popup hidden">
-                <h3 style="color:var(--gold)" id="react-title">Action!</h3>
-                <p id="react-desc">...</p>
-                <div class="timer-line"><div id="timer-fill" class="timer-fill"></div></div>
-                <div style="display:flex; justify-content:center; gap:5px;">
-                    <button class="btn-red" style="padding:5px 10px; border:none; border-radius:4px;" onclick="sendReact('challenge')">จับโกหก</button>
-                    <button id="btn-block" class="btn-blue" style="padding:5px 10px; border:none; border-radius:4px;" onclick="sendReact('block')">ป้องกัน</button>
-                    <button id="btn-contessa" class="btn-blue hidden" style="padding:5px 10px; border:none; border-radius:4px;" onclick="sendReact('block_assassin')">ใช้ Contessa</button>
-                    <button class="btn-gray" style="padding:5px 10px; border:none; border-radius:4px;" onclick="hideReaction()">ผ่าน</button>
+            <div id="autoTimer">เริ่มเกมอัตโนมัติใน: <span id="timerNum">30</span>s</div>
+            <div id="cPal" style="margin:10px 0; text-align:center;"></div>
+            <div class="team-con">
+                <div class="team-col">
+                    <h3 style="color:#3b82f6; text-align:center;">Left</h3>
+                    <button class="btn btn-gray" style="width:100%; padding:5px;" onclick="sSide('left')">เลือกฝั่ง</button>
+                    <div id="listL" style="margin-top:5px;"></div>
+                </div>
+                <div style="display:flex; flex-direction:column; justify-content:center;">
+                    <button id="rBtn" class="btn btn-gold" onclick="tReady()">พร้อม</button>
+                </div>
+                <div class="team-col">
+                    <h3 style="color:#ef4444; text-align:center;">Right</h3>
+                    <button class="btn btn-gray" style="width:100%; padding:5px;" onclick="sSide('right')">เลือกฝั่ง</button>
+                    <div id="listR" style="margin-top:5px;"></div>
                 </div>
             </div>
-            
-            <div id="block-challenge-popup" class="popup hidden">
-                 <h3 style="color:var(--red)">มีการป้องกัน!</h3>
-                 <p>คุณจะจับโกหกการ Block นี้หรือไม่?</p>
-                 <div style="margin-top:10px;">
-                    <button class="btn-red" style="padding:5px 10px; border:none; border-radius:4px;" onclick="sendReact('challenge_block')">จับโกหก</button>
-                    <button class="btn-gray" style="padding:5px 10px; border:none; border-radius:4px;" onclick="hideBlockReaction()">ยอมรับ</button>
-                 </div>
-            </div>
-        </div>
-
-        <div id="select-overlay" class="msg-overlay hidden">แตะที่ผู้เล่นเพื่อเลือกเป้าหมาย...</div>
-
-        <div id="dashboard">
-            <div class="dash-head">
-                <span id="my-name">Me</span>
-                <span>💰 <span id="my-coins" style="color:var(--gold)">0</span></span>
-            </div>
-            
-            <div id="my-hand" class="my-cards"></div>
-
-            <div class="actions-grid">
-                <button class="act-btn" onclick="doAction('Income')">Income (1)</button>
-                <button class="act-btn" onclick="doAction('Foreign Aid')">Aid (2)</button>
-                <button class="act-btn" onclick="doAction('Tax')">Tax (3)</button>
-                <button class="act-btn" onclick="doAction('Exchange')">Change Cards</button>
-                
-                <button class="act-btn atk" onclick="selectMode('Steal')">Steal (2)</button>
-                <button class="act-btn atk" onclick="selectMode('Assassinate')">Kill (3)</button>
-                
-                <button class="act-btn ult" onclick="selectMode('Coup')">COUP (7)</button>
-            </div>
         </div>
     </div>
 
-    <div id="card-modal" class="hidden">
-        <div class="modal-box">
-            <h3 id="modal-title" style="margin-bottom:15px;">เลือกการ์ด</h3>
-            <div id="modal-cards"></div>
+    <div id="gameScreen" class="screen" style="background:black;">
+        <div id="viewport">
+            <div id="world">
+                <div id="nameL" class="team-name" style="left: 100px;"></div>
+                <div id="nameR" class="team-name" style="right: 100px;"></div>
+                <div class="base" style="left:100px; color:#3b82f6;">🏰<div class="hp-bar"><div id="hpL" class="hp-val" style="background:#3b82f6;"></div></div></div>
+                <div class="base" style="right:100px; color:#ef4444;">🏰<div class="hp-bar"><div id="hpR" class="hp-val" style="background:#ef4444;"></div></div></div>
+                <div id="uLayer"></div>
+                <div id="fxLayer"></div>
+            </div>
+        </div>
+        
+        <div id="sandboxControls">
+            <button id="sideToggleBtn" class="btn btn-blue" onclick="toggleSandboxSide()">Control: LEFT</button><br>
+            <button id="exitBtn" onclick="location.reload()">EXIT</button>
+        </div>
+
+        <div id="chatCon">
+            <div id="chatBox"></div>
+            <div class="chat-input-row">
+                <input id="chatInp" type="text" placeholder="แชท..." onkeydown="checkEnter(event)">
+                <button id="chatSendBtn" onclick="sendMsg()">ส่ง</button>
+            </div>
+        </div>
+
+        <div class="hud-bottom"><div class="energy">⚡ <span id="eng">0</span>/<span id="maxEng">300</span></div></div>
+        
+        <div class="dock">
+            <div id="card-upgrade" class="card upgrade" onclick="upgradeEnergy()">
+                <div id="upg-lv" class="upgrade-lv">0</div>
+                <span class="c-icon">🔋</span>
+                <span id="upg-cost" class="c-cost">50</span>
+                <span class="c-limit">UP</span>
+            </div>
+            
+            <div id="card-sword" class="card" onclick="spawn('sword',20)"><span class="c-icon">⚔️</span><span class="c-cost">20</span><span class="c-limit" id="lim-sword">0/20</span><div class="cd-overlay"></div></div>
+            <div id="card-bow" class="card" onclick="spawn('bow',45)"><span class="c-icon">🏹</span><span class="c-cost">45</span><span class="c-limit" id="lim-bow">0/15</span><div class="cd-overlay"></div></div>
+            <div id="card-tank" class="card" onclick="spawn('tank',100)"><span class="c-icon">🛡️</span><span class="c-cost">100</span><span class="c-limit" id="lim-tank">0/15</span><div class="cd-overlay"></div></div>
+            <div id="card-healer" class="card" onclick="spawn('healer',50)"><span class="c-icon">⚕️</span><span class="c-cost">50</span><span class="c-limit" id="lim-healer">0/15</span><div class="cd-overlay"></div></div>
+            <div id="card-assassin" class="card" onclick="spawn('assassin',80)"><span class="c-icon">🥷</span><span class="c-cost">80</span><span class="c-limit" id="lim-assassin">0/15</span><div class="cd-overlay"></div></div>
+            <div id="card-mage" class="card" onclick="spawn('mage',125)"><span class="c-icon">🔮</span><span class="c-cost">125</span><span class="c-limit" id="lim-mage">0/20</span><div class="cd-overlay"></div></div>
+            <div id="card-sniper" class="card" onclick="spawn('sniper',125)"><span class="c-icon">🔫</span><span class="c-cost">125</span><span class="c-limit" id="lim-sniper">0/10</span><div class="cd-overlay"></div></div>
+            <div id="card-cannon" class="card" onclick="spawn('cannon',205)"><span class="c-icon">💣</span><span class="c-cost">205</span><span class="c-limit" id="lim-cannon">0/15</span><div class="cd-overlay"></div></div>
         </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="client.js"></script>
+    <script>
+        const socket = io();
+        let rid=null, mySide=null, eng=0, myLvl=0;
+        let timerInterval = null;
+        let lastCastTime = 0; 
+        
+        // [NEW] Sandbox Vars
+        let isSandbox = false;
+        let sandboxSide = 'left';
+
+        const ICONS = { sword:'⚔️', bow:'🏹', tank:'🛡️', mage:'🔮', assassin:'🥷', cannon:'💣', healer:'⚕️', sniper:'🔫' };
+        
+        const LIMITS = { sword:20, bow:15, tank:15, mage:20, assassin:15, cannon:15, healer:15, sniper:10 };
+        const UPGRADE_COSTS = [50, 100, 150, 250, 400, 'MAX'];
+        
+        const MAX_ENERGY_LEVELS = [300, 450, 600, 800, 1000, 1500];
+
+        // --- MENU & LOBBY ---
+        function toggleBot(){ document.getElementById('botOpt').style.display = document.getElementById('gMode').value==='bot'?'block':'none'; }
+        
+        function createRoom(){ 
+            const code = document.getElementById('customCode').value;
+            socket.emit('create_room', { name: v('pName')||'Host', mode: v('gMode'), difficulty: v('bDiff'), customId: code }); 
+        }
+        
+        function joinRoom(){ const c=v('rCode'); if(c) socket.emit('join_room', { roomId:c, name: v('pName')||'Joiner' }); else alert('ใส่รหัสห้อง'); }
+        function v(id){ return document.getElementById(id).value; }
+        
+        socket.on('join_success', d=>{ rid=d.roomId; toScr('lobbyScreen'); document.getElementById('autoTimer').style.display = d.isAuto ? 'block' : 'none'; });
+
+        socket.on('auto_match_timer', d=>{
+            let sec = d.seconds; const el = document.getElementById('timerNum');
+            if(timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(()=>{ sec--; el.innerText = sec; if(sec <= 0) clearInterval(timerInterval); }, 1000);
+        });
+
+        socket.on('room_created', d=>{ rid=d.roomId; toScr('lobbyScreen'); document.getElementById('autoTimer').style.display = 'none'; });
+        socket.on('error_msg', m=>alert(m));
+
+        socket.on('update_lobby', d=>{
+            document.getElementById('lTitle').innerText = `Room: ${rid}`;
+            const l=document.getElementById('listL'), r=document.getElementById('listR'), pBox=document.getElementById('cPal');
+            l.innerHTML=''; r.innerHTML=''; pBox.innerHTML='';
+            
+            const me = d.players.find(p=>p.id===socket.id);
+            if(me) mySide = me.side;
+
+            d.colors.forEach(c => {
+                const dot = document.createElement('div'); dot.className = `color-dot ${me && me.color===c ? 'selected' : ''}`;
+                if(d.players.some(p=>p.color===c && p.id!==socket.id)) dot.classList.add('disabled');
+                dot.style.background = c; dot.onclick = () => socket.emit('select_color', { roomId:rid, color:c }); pBox.appendChild(dot);
+            });
+
+            d.players.forEach(p=>{
+                const div = document.createElement('div'); div.className = 'p-card'; div.style.borderLeftColor = p.color;
+                div.innerHTML = `<span>${p.name}</span><span>${p.ready?'✅':'...'}</span>`;
+                if(p.side==='left') l.appendChild(div); else if(p.side==='right') r.appendChild(div);
+            });
+            
+            if(me) {
+                const b=document.getElementById('rBtn'); b.innerText = me.ready?"ยกเลิก":"พร้อม"; b.className = me.ready?"btn btn-gold":"btn btn-gray";
+            }
+        });
+
+        function sSide(s){ socket.emit('select_side', { roomId:rid, side:s }); }
+        function tReady(){ socket.emit('toggle_ready', rid); }
+        function toScr(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+
+        function startMatchmaking() { const name = v('pName') || 'Player'; socket.emit('find_match', { name }); toScr('matchScreen'); }
+        function cancelMatch() { socket.emit('cancel_match'); toScr('menuScreen'); }
+
+        // --- GAME LOGIC ---
+        socket.on('start_game', (data)=>{ 
+            if(timerInterval) clearInterval(timerInterval);
+            toScr('gameScreen'); 
+            
+            const me = data.players.find(p => p.id === socket.id);
+            if(me) {
+                mySide = me.side;
+                // [NEW] Default Sandbox Side
+                if(data.mode === 'sandbox') sandboxSide = mySide;
+            }
+
+            const leftNames = data.players.filter(p=>p.side==='left').map(p=>p.name).join(', ');
+            const rightNames = data.players.filter(p=>p.side==='right').map(p=>p.name).join(', ');
+            document.getElementById('nameL').innerText = leftNames;
+            document.getElementById('nameR').innerText = rightNames;
+
+            // [NEW] Sandbox Check
+            isSandbox = (data.mode === 'sandbox');
+            if(isSandbox) {
+                document.getElementById('sandboxControls').style.display = 'block';
+                toggleSandboxSide(mySide); // Init button state
+            } else {
+                document.getElementById('sandboxControls').style.display = 'none';
+            }
+
+            initCamera(); 
+        });
+
+        // [NEW] Sandbox Toggle Function
+        function toggleSandboxSide(forceVal) {
+            if(forceVal) sandboxSide = forceVal;
+            else sandboxSide = (sandboxSide === 'left' ? 'right' : 'left');
+
+            const btn = document.getElementById('sideToggleBtn');
+            btn.innerText = "Control: " + sandboxSide.toUpperCase();
+            if(sandboxSide === 'left') { btn.classList.remove('btn-red'); btn.classList.add('btn-blue'); }
+            else { btn.classList.remove('btn-blue'); btn.classList.add('btn-red'); }
+        }
+
+        function spawn(t,c){ 
+            const cardEl = document.getElementById('card-' + t);
+            const limEl = document.getElementById('lim-' + t);
+            const [cur, max] = limEl.innerText.split('/').map(Number);
+            
+            // Limit check still applies
+            if(cur >= max) return; 
+
+            // [EDITED] Logic for Sandbox (ignore cost check locally, visual only) vs Normal
+            let canSpawn = false;
+            if (isSandbox) {
+                canSpawn = true; // Always allow in Sandbox
+            } else {
+                if(eng >= c) canSpawn = true;
+            }
+
+            if(canSpawn && !cardEl.classList.contains('cooldown-active')) { 
+                if(!isSandbox) {
+                    eng -= c; 
+                    document.getElementById('eng').innerText = Math.floor(eng);
+                }
+                lastCastTime = Date.now(); 
+
+                // [EDITED] Send side for sandbox
+                socket.emit('spawn_request', { roomId:rid, type:t, side: isSandbox ? sandboxSide : null }); 
+                
+                cardEl.classList.add('cooldown-active'); 
+                void cardEl.offsetWidth; 
+                cardEl.classList.add('cooldown-anim'); 
+                setTimeout(() => { cardEl.classList.remove('cooldown-active', 'cooldown-anim'); }, 3000);
+            } 
+        }
+
+        function upgradeEnergy() {
+            if (myLvl >= 5) return;
+            const cost = UPGRADE_COSTS[myLvl];
+            if (eng >= cost) {
+                eng -= cost;
+                socket.emit('upgrade_energy', { roomId: rid });
+            }
+        }
+        
+        function checkEnter(e) { if(e.key === 'Enter') sendMsg(); }
+        function sendMsg() {
+            const inp = document.getElementById('chatInp');
+            if(inp.value.trim()) { socket.emit('send_chat', { roomId: rid, msg: inp.value.trim() }); inp.value = ''; }
+        }
+        
+        socket.on('chat_msg', d=>{ const b=document.getElementById('chatBox'); b.innerHTML += `<div style="color:${d.color}"><b>${d.name}:</b> ${d.msg}</div>`; b.scrollTop=b.scrollHeight; });
+
+        socket.on('world_update', d=>{
+            const now = Date.now();
+            
+            myLvl = d.myLvl;
+            if (now - lastCastTime < 600 && d.myEng > eng) { eng += (0.15 + (myLvl*0.05)); } else { eng = d.myEng; }
+            document.getElementById('eng').innerText = Math.floor(eng);
+
+            const currentMax = MAX_ENERGY_LEVELS[myLvl] || MAX_ENERGY_LEVELS[MAX_ENERGY_LEVELS.length - 1];
+            document.getElementById('maxEng').innerText = currentMax;
+            
+            document.getElementById('upg-lv').innerText = myLvl;
+            const upgCostEl = document.getElementById('upg-cost');
+            const upgCard = document.getElementById('card-upgrade');
+            
+            if (myLvl >= 5) { upgCostEl.innerText = "MAX"; upgCard.classList.add('disabled'); } 
+            else {
+                const cost = UPGRADE_COSTS[myLvl];
+                upgCostEl.innerText = cost;
+                if (eng < cost) upgCard.classList.add('disabled'); else upgCard.classList.remove('disabled');
+            }
+
+            const myCounts = {};
+            const exist = new Set();
+            const uL = document.getElementById('uLayer');
+            const fxL = document.getElementById('fxLayer');
+
+            d.u.forEach(data => {
+                const u = { i: data[0], t: data[1], s: data[2], x: data[3], y: data[4], h: data[5], act: data[6], aimTarget: data[7], c: data[8], shield: data[9] };
+
+                // [EDITED] Count based on currently controlled side in Sandbox
+                const countSide = isSandbox ? sandboxSide : mySide;
+                if(u.s === countSide) { myCounts[u.t] = (myCounts[u.t] || 0) + 1; }
+
+                exist.add(u.i);
+                let el = document.getElementById(u.i);
+                if(!el){
+                    el = document.createElement('div'); el.id=u.i; el.className='unit';
+                    el.style.background=u.c; el.style.borderColor=u.c;
+                    el.style.boxShadow=`0 0 5px ${u.c}`;
+                    el.innerHTML = `<div class="u-name"></div>${ICONS[u.t]}`;
+                    uL.appendChild(el);
+                }
+                
+                el.style.left = u.x+'px'; el.style.top = u.y+'px';
+                el.classList.remove('walk', 'attack', 'stun', 'shielded');
+                if(u.act === 'walk') el.classList.add('walk');
+                else if(u.act === 'attack') el.classList.add('attack');
+                else if(u.act === 'stun') el.classList.add('stun');
+                if(u.shield) el.classList.add('shielded');
+
+                if(u.aimTarget) {
+                    let targetEl = document.getElementById(u.aimTarget);
+                    let scopeId = 'scope_' + u.i;
+                    let scopeEl = document.getElementById(scopeId);
+                    
+                    if(targetEl || u.aimTarget.startsWith('base')) {
+                        if(!scopeEl) { scopeEl = document.createElement('div'); scopeEl.id = scopeId; scopeEl.className = 'aim-scope'; fxL.appendChild(scopeEl); }
+                        if (targetEl) { scopeEl.style.left = targetEl.style.left; scopeEl.style.top = targetEl.style.top; } 
+                        else { const isLeftBase = u.aimTarget.includes('left'); scopeEl.style.left = isLeftBase ? '100px' : '1500px'; scopeEl.style.top = '450px'; }
+                    } else if (scopeEl) { scopeEl.remove(); }
+                } else { let scopeEl = document.getElementById('scope_' + u.i); if(scopeEl) scopeEl.remove(); }
+            });
+
+            document.querySelectorAll('.card:not(.upgrade)').forEach(c=>{
+                if (!c.classList.contains('cooldown-active')) {
+                    const cost = parseInt(c.querySelector('.c-cost').innerText);
+                    const type = c.id.replace('card-','');
+                    const curCount = myCounts[type] || 0;
+                    const maxCount = LIMITS[type]; 
+                    const limText = document.getElementById('lim-' + type);
+                    if(limText) limText.innerText = `${curCount}/${maxCount}`;
+                    
+                    // [EDITED] Sandbox Logic for Card State (Ignore Energy)
+                    let disabled = false;
+                    if(curCount >= maxCount) disabled = true;
+                    if(!isSandbox && eng < cost) disabled = true;
+
+                    if(disabled) c.classList.add('disabled'); else c.classList.remove('disabled');
+                }
+            });
+
+            document.getElementById('hpL').style.width = (d.b.left/10)+'%';
+            document.getElementById('hpR').style.width = (d.b.right/10)+'%';
+
+            Array.from(uL.children).forEach(e=>{ if(!exist.has(e.id)) e.remove(); });
+            document.querySelectorAll('.aim-scope').forEach(scope => { const sniperId = scope.id.replace('scope_', ''); if (!exist.has(sniperId)) scope.remove(); });
+            document.querySelectorAll('.proj').forEach(e=>e.remove());
+            d.proj.forEach(pData=>{ const el = document.createElement('div'); el.className=`proj ${pData[2]}`; el.style.left=pData[0]+'px'; el.style.top=pData[1]+'px'; fxL.appendChild(el); });
+
+            d.fx.forEach(f=>{
+                if(f.type==='dmg'){ const e=document.createElement('div'); e.className='dmg'; e.innerText=`-${f.val}`; e.style.left=f.x+'px'; e.style.top=(f.y-20)+'px'; fxL.appendChild(e); setTimeout(()=>e.remove(),800); } 
+                else if(f.type==='heal'){ const e=document.createElement('div'); e.className='heal-text'; e.innerText=`+${f.val}`; e.style.left=f.x+'px'; e.style.top=(f.y-30)+'px'; fxL.appendChild(e); setTimeout(()=>e.remove(),800); }
+                else if(f.type==='text'){ const e=document.createElement('div'); e.className='block-text'; e.innerText=f.val; e.style.color=f.color; e.style.left=f.x+'px'; e.style.top=(f.y-30)+'px'; fxL.appendChild(e); setTimeout(()=>e.remove(),1000); }
+                else if(f.type==='aoe'){
+                    const e=document.createElement('div'); e.className='aoe'; 
+                    if(f.t === 'healer') e.classList.add('healer'); if(f.t === 'impact') e.classList.add('impact'); if(f.t === 'mage_blast') e.classList.add('mage_blast');
+                    e.style.left=f.x+'px'; e.style.top=f.y+'px'; e.style.width=(f.r*2)+'px'; e.style.height=(f.r*2)+'px';
+                    if(f.t === 'assassin') e.style.borderColor = '#ff4757'; 
+                    fxL.appendChild(e); setTimeout(()=>e.remove(),400);
+                } else if(f.type==='warp'){ const e=document.createElement('div'); e.innerText='💨'; e.style.position='absolute'; e.style.left=f.x+'px'; e.style.top=f.y+'px'; e.style.fontSize='25px'; fxL.appendChild(e); setTimeout(()=>e.remove(),500); }
+            });
+        });
+
+        socket.on('game_over', d=>{ alert(d.winner===mySide?"ชนะ!":"แพ้!"); location.reload(); });
+
+        // --- CAMERA SYSTEM ---
+        function initCamera() {
+            const vp = document.getElementById('viewport');
+            const world = document.getElementById('world');
+            let state = { x: mySide === 'right' ? -(1600 - vp.clientWidth) : 0, y: -(900 - vp.clientHeight) / 2, scale: 1 };
+            const MIN_SCALE = 0.5, MAX_SCALE = 1.5, WORLD_W = 1600, WORLD_H = 900;
+            function updateTransform() {
+                const minX = vp.clientWidth - (WORLD_W * state.scale); const minY = vp.clientHeight - (WORLD_H * state.scale);
+                if (minX > 0) state.x = minX / 2; else state.x = Math.max(minX, Math.min(0, state.x));
+                if (minY > 0) state.y = minY / 2; else state.y = Math.max(minY, Math.min(0, state.y));
+                world.style.transform = `translate3d(${state.x}px, ${state.y}px, 0) scale(${state.scale})`;
+            }
+            let lastDist = 0, startX = 0, startY = 0, isDragging = false;
+            vp.addEventListener('touchstart', (e) => {
+                if(e.touches.length === 1) { isDragging = true; startX = e.touches[0].clientX - state.x; startY = e.touches[0].clientY - state.y; } 
+                else if (e.touches.length === 2) { isDragging = false; lastDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }
+            }, {passive: false});
+            vp.addEventListener('touchmove', (e) => {
+                e.preventDefault(); 
+                if (e.touches.length === 1 && isDragging) { state.x = e.touches[0].clientX - startX; state.y = e.touches[0].clientY - startY; updateTransform(); } 
+                else if (e.touches.length === 2) {
+                    const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                    if (lastDist) { const delta = dist - lastDist; const newScale = state.scale + (delta * 0.005); state.scale = Math.min(Math.max(newScale, MIN_SCALE), MAX_SCALE); updateTransform(); }
+                    lastDist = dist;
+                }
+            }, {passive: false});
+            vp.addEventListener('touchend', () => { isDragging = false; lastDist = 0; });
+            vp.addEventListener('mousedown', (e) => { isDragging = true; startX = e.clientX - state.x; startY = e.clientY - state.y; });
+            window.addEventListener('mousemove', (e) => { if(!isDragging) return; state.x = e.clientX - startX; state.y = e.clientY - startY; updateTransform(); });
+            window.addEventListener('mouseup', () => isDragging = false);
+            vp.addEventListener('wheel', (e) => { e.preventDefault(); const delta = -Math.sign(e.deltaY) * 0.1; const newScale = state.scale + delta; state.scale = Math.min(Math.max(newScale, MIN_SCALE), MAX_SCALE); updateTransform(); }, {passive: false});
+            updateTransform();
+        }
+    </script>
 </body>
 </html>
